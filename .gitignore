@@ -1,0 +1,40 @@
+# ─── Build Outputs ──────────────────────────────────────────────────────────
+build/
+dist/
+.react-router/
+
+# ─── Dependencies ────────────────────────────────────────────────────────────
+node_modules/
+backend-node/node_modules/
+
+# ─── Environment ─────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+.env.*.local
+
+# ─── IDE / OS ────────────────────────────────────────────────────────────────
+.idea/
+.vscode/settings.json
+*.DS_Store
+Thumbs.db
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+
+# ─── TypeScript ──────────────────────────────────────────────────────────────
+*.tsbuildinfo
+
+# ─── Spring Boot Build ───────────────────────────────────────────────────────
+backend-spring/target/
+backend-spring/.mvn/
+!backend-spring/.mvn/wrapper/maven-wrapper.jar
+!backend-spring/.mvn/wrapper/maven-wrapper.properties
+backend-spring/*.class
+
+# ─── Java ────────────────────────────────────────────────────────────────────
+*.class
+*.jar
+!backend-spring/mvnw

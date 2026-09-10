@@ -1,0 +1,33 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: white-quantex-financial-backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:white_quantex;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER:org.h2.Driver}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:8Zz5twkAG57M61Jg6oTz8pX3sM4vP6wY8z0aB2cD4eF6gH8iJ0kL2mN4oP6qR8sT}
+    expiration: 86400000
+    refresh-expiration: 604800000
+  cors:
+    allowed-origins: ${FRONTEND_URL:http://localhost:7000}

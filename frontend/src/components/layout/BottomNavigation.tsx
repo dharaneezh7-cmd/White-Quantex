@@ -1,6 +1,6 @@
 import React from "react"
 import { useNavigate, useLocation } from "react-router"
-import { Home, Users, Compass, ArrowRightLeft, PlusSquare, TrendingUp, Briefcase, User } from "lucide-react"
+import { Home, Users, Compass, ArrowRightLeft, PlusSquare, TrendingUp, Briefcase, Wallet } from "lucide-react"
 
 export function BottomNavigation() {
   const navigate = useNavigate()
@@ -141,17 +141,17 @@ export function BottomNavigation() {
               <span className="text-[10px] font-bold">Ventures</span>
             </button>
 
-            {/* 5. Profile Section */}
+            {/* 5. Holdings Section */}
             <button
-              onClick={() => navigate("/profile")}
+              onClick={() => navigate("/holdings")}
               className={`flex flex-col items-center justify-center gap-0.5 py-1 transition-colors cursor-pointer active:scale-95 px-2 ${
-                location.pathname.startsWith("/profile")
+                location.pathname.startsWith("/holdings")
                   ? "text-emerald-500 font-bold"
                   : "text-slate-600 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400"
               }`}
             >
-              <User className="h-5 w-5 text-slate-700 dark:text-white" />
-              <span className="text-[10px] font-bold">Profile</span>
+              <Wallet className="h-5 w-5 text-slate-700 dark:text-white" />
+              <span className="text-[10px] font-bold">Holdings</span>
             </button>
           </>
         )}

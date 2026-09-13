@@ -177,20 +177,28 @@ export default function CommunityPage() {
 
   const handleFeedScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const currentScrollY = e.currentTarget.scrollTop
-    if (currentScrollY > 15) {
-      if (currentScrollY > lastScrollY.current) {
-        // Scrolling DOWN -> HIDE
-        setIsSearchVisibleMobile(false)
-      } else {
-        // Scrolling UP -> VISIBLE
-        setIsSearchVisibleMobile(true)
-      }
-    } else {
-      // Top of feed -> VISIBLE
+    const diff = currentScrollY - lastScrollY.current
+
+    // Always show search bar when near the top of the feed
+    if (currentScrollY <= 15) {
       setIsSearchVisibleMobile(true)
+      lastScrollY.current = currentScrollY
+      return
     }
-    lastScrollY.current = currentScrollY
+
+    // Scroll delta threshold to avoid jitter / noise
+    if (Math.abs(diff) >= 8) {
+      if (diff > 0) {
+        // Scrolling DOWN -> SHOW search bar
+        setIsSearchVisibleMobile(true)
+      } else {
+        // Scrolling UPWARD -> HIDE search bar
+        setIsSearchVisibleMobile(false)
+      }
+      lastScrollY.current = currentScrollY
+    }
   }
+
   const [postContent, setPostContent] = useState("")
   const [selectedPostType] = useState<string>("POST")
   const [selectedVisibility] = useState<string>("PUBLIC")
@@ -383,7 +391,7 @@ export default function CommunityPage() {
   const unreadNotifCount = notifications.filter((n) => !n.read).length
 
   return (
-    <div className="w-full bg-slate-50 dark:bg-[#000000] text-slate-900 dark:text-slate-50 h-screen pt-0 overflow-hidden flex flex-col transition-colors duration">
+    <div className="w-full bg-slate-50 dark:bg-[#000000] text-slate-900 dark:text-slate-50 h-[calc(100dvh-4rem-4rem)] md:h-[calc(100vh-4rem)] pt-0 overflow-hidden flex flex-col transition-colors duration">
       
       {/* ─── UNIFIED TOP HEADER BAR (HIDDEN ON MOBILE, VISIBLE ON DESKTOP) ─── */}
       <div className="hidden md:flex w-full h-14 px-4 shrink-0 items-center justify-between border-b border-slate-200 dark:border-zinc-800/90 bg-white dark:bg-[#000000] text-slate-900 dark:text-white backdrop-blur-2xl z-20 shadow-xs dark:shadow-md transition-colors duration-200">
@@ -490,7 +498,7 @@ export default function CommunityPage() {
       </div>
 
       {/* ─── THREE INDEPENDENT DIV COMMUNITY LAYOUT (FULL WIDTH EDGE-TO-EDGE) ─── */}
-      <div className="w-full px-0 sm:px-4 pt-0 sm:pt-2 pb-16 sm:pb-3 flex gap-6 flex-1 overflow-hidden">
+      <div className="w-full px-0 sm:px-4 pt-0 sm:pt-2 pb-0 sm:pb-3 flex gap-6 flex-1 overflow-hidden">
         
         {/* =================================================================== */}
         {/* ─── 1. DIV 1: SIDEBAR (LIQUID GLASS CONTAINER) ───────────────────── */}
@@ -618,10 +626,10 @@ export default function CommunityPage() {
           {/* MOBILE TOP SEARCH BAR */}
           <div
             className={cn(
-              "md:hidden p-3 border-b border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-[#060809]/95 backdrop-blur-md sticky top-0 z-10 transition-all duration-300 transform",
+              "md:hidden p-3 border-b border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-[#060809]/95 backdrop-blur-md sticky top-0 z-20 shrink-0 shadow-xs transition-all duration-300 ease-in-out transform",
               isSearchVisibleMobile
                 ? "translate-y-0 opacity-100"
-                : "-translate-y-full opacity-0 pointer-events-none -mb-14"
+                : "-translate-y-full opacity-0 pointer-events-none"
             )}
           >
             <div className="flex items-center h-9 rounded-full border border-slate-200 dark:border-zinc-800 bg-slate-100/90 dark:bg-zinc-900/90 px-3.5 gap-2 shadow-xs">

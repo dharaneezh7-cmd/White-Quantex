@@ -12,6 +12,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 
+import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
 import java.math.BigDecimal;
 import java.util.UUID;
 
@@ -22,6 +23,14 @@ public class WhiteQuantexApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(WhiteQuantexApplication.class, args);
+    }
+
+    @Bean
+    public FlywayMigrationStrategy flywayMigrationStrategy() {
+        return flyway -> {
+            flyway.repair();
+            flyway.migrate();
+        };
     }
 
     @Bean

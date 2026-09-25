@@ -19,6 +19,39 @@ export const nodeApi = axios.create({
   },
 })
 
+// Global Request Interceptor injecting active WQ user identity
+const attachUserContext = (config: any) => {
+  if (typeof window !== "undefined") {
+    try {
+      const saved = localStorage.getItem("wq_user_session")
+      if (saved) {
+        const user = JSON.parse(saved)
+        const userId = user?.id || user?.wqUserId
+        if (userId) {
+          config.headers = config.headers || {}
+          config.headers["X-WQ-User-Id"] = userId
+        }
+        if (user?.email) {
+          config.headers = config.headers || {}
+          config.headers["X-WQ-User-Email"] = user.email
+        }
+        if (user?.displayName) {
+          config.headers = config.headers || {}
+          config.headers["X-WQ-User-Name"] = user.displayName
+        }
+        if (user?.username) {
+          config.headers = config.headers || {}
+          config.headers["X-WQ-User-Username"] = user.username
+        }
+      }
+    } catch {}
+  }
+  return config
+}
+
+springApi.interceptors.request.use(attachUserContext)
+nodeApi.interceptors.request.use(attachUserContext)
+
 // Global Response Interceptors for Error Handling
 springApi.interceptors.response.use(
   (response) => response,

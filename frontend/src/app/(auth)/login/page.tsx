@@ -85,11 +85,52 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-[#00d09c] text-black font-extrabold text-xs hover:bg-[#00b888] shadow-lg shadow-[#00d09c]/20 transition-all flex items-center justify-center gap-2"
+            className="w-full py-3 rounded-xl bg-[#00d09c] text-black font-extrabold text-xs hover:bg-[#00b888] shadow-lg shadow-[#00d09c]/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             {loading ? "Authenticating..." : "Sign In to Ecosystem"} <ArrowRight className="h-4 w-4" />
           </button>
         </form>
+
+        {/* ── Demo Account One-Click Access ───────────────────────────────── */}
+        <div className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 dark:bg-indigo-950/20 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400">
+              <Sparkles className="h-4 w-4" />
+              Demo Investor Account
+            </div>
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-indigo-600 text-white uppercase tracking-wider">
+              Accredited
+            </span>
+          </div>
+          <p className="text-[11px] text-[var(--wq-fg-muted)] leading-relaxed">
+            Test the entire platform instantly as <strong>Alexander Vance</strong> (Institutional Managing Partner) with live database positions.
+          </p>
+          <div className="flex items-center justify-between text-[11px] p-2 rounded-lg bg-[var(--wq-bg-elevated)] border border-[var(--wq-border)] font-mono text-[var(--wq-fg-muted)]">
+            <span>demo@whitequantex.com</span>
+            <span className="text-slate-400">demo123</span>
+          </div>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={async () => {
+              setError("")
+              setLoading(true)
+              try {
+                const user = await authService.demoLogin()
+                setUser(user)
+                navigate("/dashboard")
+              } catch (err: any) {
+                setError(err.response?.data?.message || "Demo session initialization error.")
+              } finally {
+                setLoading(false)
+              }
+            }}
+            className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            1-Click Demo Investor Access
+          </button>
+        </div>
 
         <p className="text-center text-xs text-[var(--wq-fg-muted)] pt-2 border-t border-[var(--wq-border)]">
           Don't have a White Quantex ID?{" "}

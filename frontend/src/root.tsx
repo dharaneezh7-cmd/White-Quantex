@@ -1,3 +1,4 @@
+import React, { Suspense } from "react"
 import {
   Links,
   Meta,
@@ -8,6 +9,7 @@ import {
 } from "react-router"
 import "./app/globals.css"
 import { Providers } from "./components/providers"
+import { PageLoadingFallback } from "./components/common/PageLoader"
 
 const THEME_SCRIPT = `
 (function(){
@@ -44,7 +46,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function Root() {
-  return <Outlet />
+  return (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <Outlet />
+    </Suspense>
+  )
 }
 
 export function ErrorBoundary({ error }: { error: unknown }) {

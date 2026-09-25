@@ -6,6 +6,8 @@ import healthRouter from "./routes/health.mjs"
 import postsRouter from "./routes/posts.mjs"
 import communitiesRouter from "./routes/communities.mjs"
 import followsRouter from "./routes/follows.mjs"
+import membersRouter from "./routes/members.mjs"
+import notificationsRouter from "./routes/notifications.mjs"
 
 const app = express()
 
@@ -22,6 +24,8 @@ app.use("/api/health", healthRouter)
 app.use("/api/posts", postsRouter)
 app.use("/api/communities", communitiesRouter)
 app.use("/api/follows", followsRouter)
+app.use("/api/members", membersRouter)
+app.use("/api/notifications", notificationsRouter)
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Node API route not found" })

@@ -3,7 +3,8 @@ import {
   Home, Search, Users, MessageSquare, PlusSquare, Heart, Bookmark, Share2,
   Sparkles, TrendingUp, Lock, FileText, UserCheck, BookOpen, Bell,
   ShieldCheck, CheckCircle2, UserPlus, MessageCircle, ArrowUpRight, Filter,
-  PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Menu, X, Image as ImageIcon, Compass
+  PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Menu, X, Image as ImageIcon, Compass,
+  Send, Loader2
 } from "lucide-react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "react-router"
@@ -16,145 +17,124 @@ import { VerificationBadge } from "../../components/shared/VerificationBadge"
 import { FounderCard } from "../../components/shared/FounderCard"
 import { InvestorCard } from "../../components/shared/InvestorCard"
 import { useAuthStore } from "../../stores/auth-store"
-import { communityService } from "../../services/community/communityService"
+import { communityService, type CommunityMember, type CommunityNotification } from "../../services/community/communityService"
 import { formatNumber, getInitials, cn } from "../../lib/utils"
-import type { Post } from "../../types"
+import type { Post, Comment, Community } from "../../types"
 
-// Sample Notifications Data
-const SAMPLE_NOTIFICATIONS = [
-  {
-    id: "notif-1",
-    type: "LIKE",
-    actor: { name: "Elena Voss", avatar: "", role: "Founder @ NovaMind AI" },
-    message: "liked your post 'Quantum LLM v2.4 benchmark results released'.",
-    time: "2m ago",
-    read: false,
-    icon: Heart,
-    iconColor: "text-white bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700",
-  },
-  {
-    id: "notif-2",
-    type: "FOLLOW",
-    actor: { name: "Sarah Chen", avatar: "", role: "General Partner @ Sequoia" },
-    message: "started following your founder profile.",
-    time: "15m ago",
-    read: false,
-    icon: UserPlus,
-    iconColor: "text-white bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700",
-  },
-  {
-    id: "notif-3",
-    type: "VENTURE",
-    actor: { name: "VerdeGrid Energy", avatar: "", role: "CleanTech Startup" },
-    message: "published a new fundraising campaign: $3.5M Series A.",
-    time: "1h ago",
-    read: false,
-    icon: TrendingUp,
-    iconColor: "text-white bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700",
-  },
-  {
-    id: "notif-4",
-    type: "VERIFICATION",
-    actor: { name: "White Quantex Trust", avatar: "", role: "System Security" },
-    message: "Your profile verification level upgraded to Gold Verified.",
-    time: "3h ago",
-    read: true,
-    icon: ShieldCheck,
-    iconColor: "text-white bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700",
-  },
-  {
-    id: "notif-5",
-    type: "COMMENT",
-    actor: { name: "David Kim", avatar: "", role: "Managing Director @ Founders Fund" },
-    message: "commented: 'Fantastic traction on the enterprise pilot!'",
-    time: "5h ago",
-    read: true,
-    icon: MessageCircle,
-    iconColor: "text-white bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700",
-  },
-]
+// Notification icon resolver based on notification type
+function getNotificationIcon(type: string) {
+  switch (type) {
+    case "LIKE":
+      return Heart
+    case "FOLLOW":
+      return UserPlus
+    case "VENTURE":
+      return TrendingUp
+    case "VERIFICATION":
+      return ShieldCheck
+    case "COMMENT":
+      return MessageCircle
+    default:
+      return Bell
+  }
+}
 
-// Fallback Default Posts
-const DEFAULT_POSTS: Post[] = [
-  {
-    id: "post-demo-1",
-    wqAuthorId: "u-2",
-    author: {
-      wqUserId: "u-2",
-      displayName: "Elena Voss",
-      username: "elenavoss",
-      headline: "Founder & CEO @ NovaMind AI",
-      verificationLevel: "GOLD",
-      avatarUrl: "",
+// Interactive Post Comments Component
+function PostCommentsSection({ postId }: { postId: string }) {
+  const queryClient = useQueryClient()
+  const [commentText, setCommentText] = useState("")
+
+  const { data: comments, isLoading } = useQuery({
+    queryKey: ["post-comments", postId],
+    queryFn: () => communityService.getComments(postId),
+    staleTime: 5_000,
+  })
+
+  const addCommentMutation = useMutation({
+    mutationFn: (content: string) => communityService.addComment(postId, content),
+    onSuccess: () => {
+      setCommentText("")
+      queryClient.invalidateQueries({ queryKey: ["post-comments", postId] })
+      queryClient.invalidateQueries({ queryKey: ["community-posts"] })
     },
-    content: "Excited to share that NovaMind AI has officially crossed 100k daily active inference requests! Huge milestone for our engineering team. Thank you to the White Quantex founder network for early feedback during our closed beta.",
-    postType: "IMAGE",
-    visibility: "PUBLIC",
-    hashtags: ["AI", "Milestone"],
-    mentions: [],
-    likesCount: 142,
-    commentsCount: 28,
-    sharesCount: 12,
-    bookmarksCount: 34,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    isLiked: false,
-    isBookmarked: false,
-    mediaUrls: ["https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80"],
-  },
-  {
-    id: "post-demo-2",
-    wqAuthorId: "u-3",
-    author: {
-      wqUserId: "u-3",
-      displayName: "Marcus Klein",
-      username: "marcusklein",
-      headline: "CEO @ VerdeGrid Energy",
-      verificationLevel: "SILVER",
-      avatarUrl: "",
-    },
-    content: "We're expanding our smart grid pilot across 5 European municipal hubs! Looking to connect with B2B utility partners and embedded software engineers. Feel free to connect or drop a message.",
-    postType: "TEXT",
-    visibility: "PUBLIC",
-    hashtags: ["CleanTech"],
-    mentions: [],
-    likesCount: 89,
-    commentsCount: 14,
-    sharesCount: 5,
-    bookmarksCount: 18,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    isLiked: false,
-    isBookmarked: false,
-    mediaUrls: [],
-  },
-  {
-    id: "post-demo-3",
-    wqAuthorId: "u-4",
-    author: {
-      wqUserId: "u-4",
-      displayName: "Sarah Chen",
-      username: "sarahchen",
-      headline: "General Partner @ Sequoia Capital",
-      verificationLevel: "PLATINUM",
-      avatarUrl: "",
-    },
-    content: "Key takeaway from our latest Venture Report: AI infrastructure startups focusing on vertical domain compliance are outperforming horizontal models 3x in enterprise retention. What are you building in this space?",
-    postType: "TEXT",
-    visibility: "PUBLIC",
-    hashtags: ["VentureCapital"],
-    mentions: [],
-    likesCount: 230,
-    commentsCount: 45,
-    sharesCount: 29,
-    bookmarksCount: 60,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    isLiked: true,
-    isBookmarked: true,
-    mediaUrls: [],
-  },
-]
+  })
+
+  const handleAddComment = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!commentText.trim() || addCommentMutation.isPending) return
+    addCommentMutation.mutate(commentText.trim())
+  }
+
+  return (
+    <div className="pt-3 mt-3 border-t border-slate-100 dark:border-zinc-800/80 space-y-3">
+      {/* Comment Form */}
+      <form onSubmit={handleAddComment} className="flex items-center gap-2">
+        <input
+          type="text"
+          value={commentText}
+          onChange={(e) => setCommentText(e.target.value)}
+          placeholder="Write a constructive insight or comment..."
+          className="flex-1 text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-900 dark:text-white rounded-[8px] px-3 py-2 outline-none focus:ring-1 focus:ring-emerald-500 transition-all placeholder:text-slate-400"
+        />
+        <Button
+          type="submit"
+          size="sm"
+          disabled={!commentText.trim() || addCommentMutation.isPending}
+          className="h-8 px-3 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-[8px] shrink-0 cursor-pointer"
+        >
+          {addCommentMutation.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Send className="h-3.5 w-3.5" />
+          )}
+        </Button>
+      </form>
+
+      {/* Comments List */}
+      {isLoading ? (
+        <div className="py-2 text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading comments...
+        </div>
+      ) : !comments || comments.length === 0 ? (
+        <p className="text-[11px] text-slate-400 py-1 italic">No comments yet. Be the first to reply!</p>
+      ) : (
+        <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+          {comments.map((c) => (
+            <div
+              key={c.id}
+              className="p-2.5 rounded-[8px] bg-slate-50/70 dark:bg-zinc-900/60 border border-slate-200/60 dark:border-zinc-800/60 flex items-start gap-2.5"
+            >
+              <Avatar className="h-7 w-7 rounded-[6px] shrink-0">
+                <AvatarImage src={c.author?.avatarUrl} alt={c.author?.displayName} />
+                <AvatarFallback className="text-[10px] font-bold bg-slate-800 text-white rounded-[6px]">
+                  {getInitials(c.author?.displayName || "User")}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] font-bold text-slate-900 dark:text-white">
+                      {c.author?.displayName || "Member"}
+                    </span>
+                    {c.author?.verificationLevel && (
+                      <VerificationBadge level={c.author.verificationLevel} />
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line">
+                  {c.content}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function CommunityPage() {
   const navigate = useNavigate()
@@ -217,19 +197,13 @@ export default function CommunityPage() {
   const [peopleSubFilter, setPeopleSubFilter] = useState<"all" | "founders" | "investors">("all")
   const [notifFilter, setNotifFilter] = useState<"all" | "mentions" | "activity">("all")
 
-  // Notifications List State
-  const [notifications, setNotifications] = useState(SAMPLE_NOTIFICATIONS)
-
   const [activeCommentPostId, setActiveCommentPostId] = useState<string | null>(null)
 
   // Local Overrides
   const [likedPostsMap, setLikedPostsMap] = useState<Record<string, boolean>>({})
   const [likesDeltaMap, setLikesDeltaMap] = useState<Record<string, number>>({})
   const [bookmarkedPostsMap, setBookmarkedPostsMap] = useState<Record<string, boolean>>({})
-  const [joinedCommunities, setJoinedCommunities] = useState<Record<string, boolean>>({
-    "comm-1": true,
-    "comm-3": true,
-  })
+  const [joinedCommunities, setJoinedCommunities] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     const handleOpenModal = () => setIsPostModalOpen(true)
@@ -261,28 +235,38 @@ export default function CommunityPage() {
     }
   }, [])
 
-  // Queries
+  // Queries - Strictly fetching live data from Node.js Express backend & MongoDB
   const { data: postsData, isLoading: isPostsLoading } = useQuery({
     queryKey: ["community-posts"],
     queryFn: () => communityService.getFeed(0, 50),
     staleTime: 5_000,
   })
-
-  const apiPosts: Post[] = postsData?.content ?? []
-  const posts: Post[] = apiPosts.length > 0 ? apiPosts : DEFAULT_POSTS
+  const posts: Post[] = postsData?.content ?? []
 
   const { data: communitiesData } = useQuery({
     queryKey: ["community-hubs"],
     queryFn: () => communityService.getCommunities(),
     staleTime: 10_000,
   })
+  const communities = communitiesData ?? []
 
-  const communities = communitiesData ?? [
-    { id: "comm-1", name: "AI & ML Innovators", description: "Deep learning, LLMs, and enterprise AI founders.", memberCount: 3420 },
-    { id: "comm-2", name: "Fintech & DeFi Hub", description: "Payment infrastructure and blockchain innovation.", memberCount: 2890 },
-    { id: "comm-3", name: "CleanTech Pioneers", description: "Decentralized energy grids and carbon solutions.", memberCount: 1750 },
-    { id: "comm-4", name: "SaaS Scaleups", description: "B2B SaaS growth strategies and ARR milestones.", memberCount: 4120 },
-  ]
+  const { data: membersData, isLoading: isMembersLoading } = useQuery({
+    queryKey: ["community-members", peopleSubFilter, rightSearchQuery],
+    queryFn: () =>
+      communityService.getMembers(
+        peopleSubFilter === "all" ? undefined : peopleSubFilter === "founders" ? "FOUNDER" : "INVESTOR",
+        rightSearchQuery.trim() || undefined
+      ),
+    staleTime: 10_000,
+  })
+  const members: CommunityMember[] = membersData ?? []
+
+  const { data: notificationsData, isLoading: isNotificationsLoading } = useQuery({
+    queryKey: ["community-notifications", notifFilter],
+    queryFn: () => communityService.getNotifications(notifFilter === "all" ? undefined : notifFilter),
+    staleTime: 5_000,
+  })
+  const notifications: CommunityNotification[] = notificationsData ?? []
 
   // Mutations
   const createPostMutation = useMutation({
@@ -368,12 +352,36 @@ export default function CommunityPage() {
     })
   }
 
+  const joinCommunityMutation = useMutation({
+    mutationFn: ({ commId, isJoined }: { commId: string; isJoined: boolean }) =>
+      isJoined ? communityService.leaveCommunity(commId) : communityService.joinCommunity(commId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["community-hubs"] })
+    },
+  })
+
   const toggleJoinCommunity = (commId: string) => {
-    setJoinedCommunities((prev) => ({ ...prev, [commId]: !prev[commId] }))
+    const isCurrentlyJoined = Boolean(joinedCommunities[commId])
+    setJoinedCommunities((prev) => ({ ...prev, [commId]: !isCurrentlyJoined }))
+    joinCommunityMutation.mutate({ commId, isJoined: isCurrentlyJoined })
   }
 
+  const markNotifReadMutation = useMutation({
+    mutationFn: (notifId: string) => communityService.markNotificationRead(notifId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["community-notifications"] })
+    },
+  })
+
+  const markAllNotifsMutation = useMutation({
+    mutationFn: () => communityService.markAllNotificationsRead(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["community-notifications"] })
+    },
+  })
+
   const markAllNotifsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+    markAllNotifsMutation.mutate()
   }
 
   const filteredPosts = posts.filter((p) => {
@@ -758,24 +766,25 @@ export default function CommunityPage() {
               </div>
 
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-                {[
-                  { id: "f1", name: "Elena Voss", headline: "Founder @ NovaMind AI", location: "San Francisco, CA", followersCount: 14200, role: "FOUNDER", verificationLevel: "GOLD" },
-                  { id: "f2", name: "Marcus Klein", headline: "CEO @ VerdeGrid Energy", location: "Berlin, Germany", followersCount: 8900, role: "FOUNDER", verificationLevel: "SILVER" },
-                  { id: "i1", name: "Sarah Chen", headline: "General Partner @ Sequoia Capital", location: "Menlo Park, CA", followersCount: 24500, role: "INVESTOR", verificationLevel: "PLATINUM" },
-                  { id: "i2", name: "David Kim", headline: "Managing Director @ Founders Fund", location: "New York, NY", followersCount: 18900, role: "INVESTOR", verificationLevel: "GOLD" },
-                ].filter((person) => {
-                  if (peopleSubFilter === "founders") return person.role === "FOUNDER"
-                  if (peopleSubFilter === "investors") return person.role === "INVESTOR"
-                  return true
-                }).map((person, i) => (
-                  <div key={person.id}>
-                    {person.role === "FOUNDER" ? (
-                      <FounderCard founder={person} index={i} />
-                    ) : (
-                      <InvestorCard investor={person} index={i} />
-                    )}
+                {isMembersLoading ? (
+                  <div className="col-span-full py-12 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                    <Sparkles className="h-4 w-4 animate-spin text-slate-700 dark:text-white" /> Loading ecosystem members...
                   </div>
-                ))}
+                ) : members.length === 0 ? (
+                  <div className="col-span-full py-12 text-center text-xs text-slate-500">
+                    No members found matching your search.
+                  </div>
+                ) : (
+                  members.map((person, i) => (
+                    <div key={person.id}>
+                      {person.role === "FOUNDER" ? (
+                        <FounderCard founder={{ ...person, avatarUrl: person.avatar || person.avatarUrl }} index={i} />
+                      ) : (
+                        <InvestorCard investor={{ ...person, avatarUrl: person.avatar || person.avatarUrl }} index={i} />
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           ) : (
@@ -878,7 +887,6 @@ export default function CommunityPage() {
                             </button>
                           </div>
 
-                          {/* Bookmark */}
                           <button
                             type="button"
                             onClick={() => handleToggleBookmark(post.id, Boolean(post.isBookmarked))}
@@ -890,6 +898,11 @@ export default function CommunityPage() {
                             <Bookmark className={cn("h-4 w-4", isBookmarked && "fill-amber-500 text-amber-500")} />
                           </button>
                         </div>
+
+                        {/* Post Comments Section */}
+                        {activeCommentPostId === post.id && (
+                          <PostCommentsSection postId={post.id} />
+                        )}
                       </CardContent>
                     </Card>
                   )
@@ -962,17 +975,23 @@ export default function CommunityPage() {
 
               {/* Notification List Items */}
               <div className="space-y-3">
-                {notifications
-                  .filter((n) => {
-                    if (notifFilter === "mentions") return n.type === "COMMENT"
-                    if (notifFilter === "activity") return n.type === "LIKE" || n.type === "FOLLOW"
-                    return true
-                  })
-                  .map((notif) => {
-                    const IconComp = notif.icon
+                {isNotificationsLoading ? (
+                  <div className="py-6 text-center text-xs text-slate-400 flex items-center justify-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 animate-spin" /> Loading alerts...
+                  </div>
+                ) : notifications.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-slate-400">
+                    No notifications yet.
+                  </div>
+                ) : (
+                  notifications.map((notif) => {
+                    const IconComp = getNotificationIcon(notif.type)
                     return (
                       <div
                         key={notif.id}
+                        onClick={() => {
+                          if (!notif.read) markNotifReadMutation.mutate(notif.id)
+                        }}
                         className={cn(
                           "p-3 rounded-[10px] border transition-all cursor-pointer flex items-start gap-3",
                           notif.read
@@ -986,19 +1005,20 @@ export default function CommunityPage() {
 
                         <div className="min-w-0 flex-1 space-y-0.5">
                           <p className="text-xs text-slate-800 dark:text-slate-200 leading-snug">
-                            <span className="font-bold text-slate-900 dark:text-white">{notif.actor.name} </span>
+                            <span className="font-bold text-slate-900 dark:text-white">{notif.actor?.name} </span>
                             {notif.message}
                           </p>
                           <div className="flex items-center justify-between pt-1">
                             <span className="text-[10px] text-slate-400 font-medium">{notif.time}</span>
                             {!notif.read && (
-                              <span className="h-1.5 w-1.5 rounded-full bg-slate-400 dark:bg-white"></span>
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
                             )}
                           </div>
                         </div>
                       </div>
                     )
-                  })}
+                  })
+                )}
               </div>
 
               <div className="pt-2 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between">

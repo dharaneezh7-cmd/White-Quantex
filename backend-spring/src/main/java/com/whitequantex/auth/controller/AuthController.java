@@ -51,6 +51,12 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<UserEntity>> login(@RequestBody LoginRequest req) {
+        if ("demo@whitequantex.com".equalsIgnoreCase(req.getEmail()) && 
+            ("demo123".equals(req.getPassword()) || "password123".equals(req.getPassword()))) {
+            UserEntity demo = getOrCreateDemoUser();
+            return ResponseEntity.ok(ApiResponse.success(demo, "Demo Investor session authenticated"));
+        }
+
         UserEntity user = userRepository.findByEmail(req.getEmail())
                 .orElse(null);
 
@@ -61,23 +67,39 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(user, "Authenticated successfully"));
     }
 
+    @PostMapping("/demo-login")
+    public ResponseEntity<ApiResponse<UserEntity>> demoLogin() {
+        UserEntity demo = getOrCreateDemoUser();
+        return ResponseEntity.ok(ApiResponse.success(demo, "Authenticated as Demo Investor (Alexander Vance)"));
+    }
+
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<UserEntity>> me() {
-        UserEntity demo = userRepository.findAll().stream().findFirst().orElseGet(() -> {
+        UserEntity demo = getOrCreateDemoUser();
+        return ResponseEntity.ok(ApiResponse.success(demo, "Current session identity retrieved"));
+    }
+
+    private UserEntity getOrCreateDemoUser() {
+        return userRepository.findByEmail("demo@whitequantex.com").orElseGet(() -> {
             UserEntity u = UserEntity.builder()
-                    .email("alex@venture.com")
-                    .firstName("Alex")
+                    .email("demo@whitequantex.com")
+                    .passwordHash(passwordEncoder.encode("demo123"))
+                    .firstName("Alexander")
                     .lastName("Vance")
                     .displayName("Alexander Vance")
-                    .primaryRole("FOUNDER")
-                    .verificationLevel("GOLD")
+                    .username("demo_investor")
+                    .headline("Managing Partner · Quantex Sovereign Capital")
+                    .bio("Accredited institutional investor and venture capitalist specializing in AI inference infrastructure, orbital robotics, and quantum computing materials.")
+                    .primaryRole("INVESTOR")
+                    .accountType("institutional")
+                    .verificationLevel("PLATINUM")
                     .kycStatus("APPROVED")
-                    .trustScore(94)
+                    .trustScore(98)
+                    .isActive(true)
+                    .isEmailVerified(true)
                     .build();
             return userRepository.save(u);
         });
-
-        return ResponseEntity.ok(ApiResponse.success(demo, "Current session identity retrieved"));
     }
 
     @PostMapping("/logout")

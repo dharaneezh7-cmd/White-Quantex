@@ -12,6 +12,15 @@ export const authService = {
     return res.data.data
   },
 
+  async demoLogin(): Promise<WqUser> {
+    try {
+      const res = await springApi.post<ApiResponse<WqUser>>("/auth/demo-login")
+      return res.data.data
+    } catch {
+      return this.login({ email: "demo@whitequantex.com", password: "demo123" })
+    }
+  },
+
   async register(data: RegisterRequest): Promise<WqUser> {
     const res = await springApi.post<ApiResponse<WqUser>>("/auth/register", data)
     return res.data.data

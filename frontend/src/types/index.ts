@@ -75,6 +75,7 @@ export type NotificationType =
 // ── Identity & Auth ───────────────────────────────────────────────────────────
 
 export interface WqUser {
+  id?: string              // User ID alias
   wqUserId: string         // Stable UUID — never changes
   email: string
   firstName: string

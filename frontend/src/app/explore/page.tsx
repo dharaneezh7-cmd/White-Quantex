@@ -1,5 +1,13 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Link, useSearchParams } from "react-router"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useAuthStore } from "../../stores/auth-store"
+import {
+  exploreService,
+  type UpcomingCompany,
+  type WqRecommendation,
+  type MutualScheme,
+} from "../../services/explore/exploreService"
 import {
   Search,
   Filter,
@@ -36,22 +44,180 @@ import {
   Users,
   X,
   ChevronDown,
+  ChevronUp,
+  Info,
   Vote,
   Download,
   FileText,
   CheckCheck,
   AlertTriangle,
+  Globe,
+  MapPin,
+  User,
+  Calendar,
+  Table,
+  LayoutGrid,
+  ArrowUpDown,
+  Award,
+  Landmark,
 } from "lucide-react"
+
+// ── Deterministic Solid Logo Background Palette (immune to Tailwind CSS purging) ──
+const LOGO_COLOR_MAP: Record<string, string> = {
+  "bg-indigo-600": "#4f46e5",
+  "bg-indigo-700": "#4338ca",
+  "bg-emerald-500": "#10b981",
+  "bg-emerald-600": "#059669",
+  "bg-emerald-700": "#047857",
+  "bg-cyan-600": "#0891b2",
+  "bg-cyan-700": "#0e7490",
+  "bg-slate-700": "#334155",
+  "bg-amber-500": "#f59e0b",
+  "bg-amber-600": "#d97706",
+  "bg-rose-600": "#e11d48",
+  "bg-rose-700": "#be123c",
+  "bg-blue-600": "#2563eb",
+  "bg-blue-700": "#1d4ed8",
+  "bg-purple-600": "#9333ea",
+  "bg-purple-700": "#7e22ce",
+  "bg-orange-600": "#ea580c",
+  "bg-teal-600": "#0d9488",
+  "bg-violet-600": "#7c3aed",
+  "bg-red-600": "#dc2626",
+  "bg-zinc-700": "#3f3f46",
+}
+
+const FALLBACK_PALETTE = [
+  "#4f46e5", // Indigo
+  "#059669", // Emerald
+  "#0891b2", // Cyan
+  "#2563eb", // Blue
+  "#7c3aed", // Violet
+  "#e11d48", // Rose
+  "#d97706", // Amber
+  "#0d9488", // Teal
+  "#4338ca", // Deep Indigo
+  "#047857", // Deep Emerald
+]
+
+function getCompanyLogoStyle(colorStr?: string, tickerOrName?: string): React.CSSProperties {
+  if (colorStr && LOGO_COLOR_MAP[colorStr]) {
+    return { backgroundColor: LOGO_COLOR_MAP[colorStr], color: "#ffffff" }
+  }
+  if (colorStr && (colorStr.startsWith("#") || colorStr.startsWith("rgb"))) {
+    return { backgroundColor: colorStr, color: "#ffffff" }
+  }
+  const seed = tickerOrName || "WQ"
+  let hash = 0
+  for (let i = 0; i < seed.length; i++) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const bg = FALLBACK_PALETTE[Math.abs(hash) % FALLBACK_PALETTE.length]
+  return { backgroundColor: bg, color: "#ffffff" }
+}
+
+// ── 4-Line Explanatory Breakdown Component for Market Categories ──
+function CategoryExplanationBox({
+  color = "emerald",
+  lines,
+  defaultOpen = false,
+}: {
+  color?: "emerald" | "amber" | "rose" | "cyan" | "purple"
+  lines: [string, string, string, string]
+  defaultOpen?: boolean
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen)
+
+  const dotColorClass = {
+    emerald: "bg-emerald-500 dark:bg-emerald-400",
+    amber: "bg-amber-500 dark:bg-amber-400",
+    rose: "bg-rose-500 dark:bg-rose-400",
+    cyan: "bg-cyan-500 dark:bg-cyan-400",
+    purple: "bg-purple-500 dark:bg-purple-400",
+  }[color]
+
+  const infoColorClass = {
+    emerald: "text-emerald-600 dark:text-emerald-400",
+    amber: "text-amber-600 dark:text-amber-400",
+    rose: "text-rose-600 dark:text-rose-400",
+    cyan: "text-cyan-600 dark:text-cyan-400",
+    purple: "text-purple-600 dark:text-purple-400",
+  }[color]
+
+  const hoverBgClass = {
+    emerald: "hover:bg-emerald-50/70 dark:hover:bg-emerald-950/30",
+    amber: "hover:bg-amber-50/70 dark:hover:bg-amber-950/30",
+    rose: "hover:bg-rose-50/70 dark:hover:bg-rose-950/30",
+    cyan: "hover:bg-cyan-50/70 dark:hover:bg-cyan-950/30",
+    purple: "hover:bg-purple-50/70 dark:hover:bg-purple-950/30",
+  }[color]
+
+  return (
+    <div className="pt-2 border-t border-slate-100 dark:border-zinc-800/80">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full flex items-center justify-between py-1 px-1.5 rounded-lg transition-colors cursor-pointer text-[11px] font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white ${hoverBgClass}`}
+      >
+        <span className="flex items-center gap-1.5">
+          <Info className={`h-3.5 w-3.5 ${infoColorClass}`} />
+          <span>About Category</span>
+        </span>
+        <span className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
+          <span>{isOpen ? "Hide" : "What does this mean?"}</span>
+          <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="mt-2 rounded-xl p-2.5 bg-slate-50/90 dark:bg-zinc-800/50 border border-slate-200/70 dark:border-zinc-800/70 text-[11px] leading-relaxed text-slate-600 dark:text-zinc-300 space-y-1.5 animate-in fade-in-50 duration-200 shadow-2xs">
+          <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-1">
+            <span className="flex items-center gap-1">
+              <Info className={`h-3 w-3 ${infoColorClass}`} />
+              <span>Category Definition & Methodology</span>
+            </span>
+            <span className="text-[9px] font-normal text-slate-400">4-Line Institutional Insight</span>
+          </div>
+          {lines.map((line, idx) => (
+            <p key={idx} className="flex items-start gap-1.5">
+              <span className={`h-1.5 w-1.5 rounded-full ${dotColorClass} mt-1.5 shrink-0`} />
+              <span>{line}</span>
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function ExplorePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const activeNavTab =
-    (searchParams.get("tab") as "search" | "positions" | "orders" | "my_watchlist" | "all_watchlist" | "news") || "search"
+    (searchParams.get("tab") as "search" | "positions" | "orders" | "my_watchlist" | "all_watchlist" | "index" | "news") || "search"
 
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedTag, setSelectedTag] = useState("All")
+  const [selectedTag, setSelectedTag] = useState("All Companies")
   const [showNews, setShowNews] = useState(false)
   const [newsFilter, setNewsFilter] = useState("All")
+
+  // ── Explore Page View All Sections Toggle State ──────────────────────────
+  const [showAllSections, setShowAllSections] = useState<boolean>(() => searchParams.get("view") === "all")
+
+  useEffect(() => {
+    setShowAllSections(searchParams.get("view") === "all")
+  }, [searchParams])
+
+  const handleToggleViewAll = () => {
+    const next = !showAllSections
+    setShowAllSections(next)
+    const newParams = new URLSearchParams(searchParams)
+    if (next) {
+      newParams.set("view", "all")
+    } else {
+      newParams.delete("view")
+    }
+    setSearchParams(newParams, { replace: true })
+  }
 
   // ── Invested Holdings News & Notifications State ─────────────────────────
   const [newsCompanyFilter, setNewsCompanyFilter] = useState<"ALL" | "TFLOW" | "GGRID" | "QMAT">("ALL")
@@ -65,406 +231,199 @@ export default function ExplorePage() {
   const [dismissedNoticeIds, setDismissedNoticeIds] = useState<string[]>([])
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
+  // ── New Sections View All Toggle State ────────────────────────────────────
+  const [showAllRecentlyAdded, setShowAllRecentlyAdded] = useState(false)
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false)
+  const [showAllRecommendations, setShowAllRecommendations] = useState(false)
+  const [showAllSchemes, setShowAllSchemes] = useState(false)
+  const [selectedSchemeDetail, setSelectedSchemeDetail] = useState<MutualScheme | null>(null)
+
+  // ── Companies Index State (tab === "index") ─────────────────────────────
+  const [indexSearchQuery, setIndexSearchQuery] = useState("")
+  const [indexSelectedLetter, setIndexSelectedLetter] = useState("ALL")
+  const [indexSelectedSector, setIndexSelectedSector] = useState("All")
+  const [indexSortBy, setIndexSortBy] = useState<"name" | "valuation" | "founded" | "employees">("valuation")
+  const [indexViewMode, setIndexViewMode] = useState<"table" | "grid">("table")
+  const [selectedCompanyProfile, setSelectedCompanyProfile] = useState<any | null>(null)
+
   // ── Screener State (Row 4 Left) ──────────────────────────────────────────
   const [screenerSector, setScreenerSector] = useState("All")
-  const [screenerStage, setScreenerStage] = useState("All")
+  const [screenerTier, setScreenerTier] = useState("All")
   const [screenerValuation, setScreenerValuation] = useState("All")
 
   // ── Orders filter state ──────────────────────────────────────────────────
   const [orderFilter, setOrderFilter] = useState<"ALL" | "FILLED" | "PENDING">("ALL")
 
-  // ── Mock Data ────────────────────────────────────────────────────────────
-  // User's Invested Companies: TechFlow AI Solutions (TFLOW), GreenLeaf Energy (GGRID), Quantum Materials Corp (QMAT)
-  const holdingsNews = [
-    {
-      id: "hn-1",
-      ticker: "TFLOW",
-      companyName: "TechFlow AI Solutions",
-      logoColor: "bg-indigo-600",
-      category: "Contract Expansion",
+  const queryClient = useQueryClient()
+  const { user } = useAuthStore()
+  const userId = user?.id || (user as any)?.wqUserId || "anon"
+
+  // ── Spring Boot Financial Truth Engine Queries (with resilient fallback) ──
+  const { data: backendOverview } = useQuery({
+    queryKey: ["explore", "overview", userId],
+    queryFn: () => exploreService.getOverview(),
+    staleTime: 60_000,
+    retry: false,
+  })
+
+  const { data: backendPositions } = useQuery({
+    queryKey: ["explore", "positions", userId],
+    queryFn: () => exploreService.getPositions(),
+    staleTime: 60_000,
+    retry: false,
+  })
+
+  const { data: backendOrders } = useQuery({
+    queryKey: ["explore", "orders", userId, orderFilter],
+    queryFn: () => exploreService.getOrders(orderFilter),
+    staleTime: 60_000,
+    retry: false,
+  })
+
+  const { data: backendNews } = useQuery({
+    queryKey: ["explore", "news", newsCompanyFilter, newsTypeFilter],
+    queryFn: () => exploreService.getNews(newsCompanyFilter, newsTypeFilter),
+    staleTime: 60_000,
+    retry: false,
+  })
+
+  // Dynamically record recently viewed company for the authenticated user
+  useEffect(() => {
+    if (selectedCompanyProfile?.ticker && userId !== "anon") {
+      exploreService.recordRecentlyViewed(selectedCompanyProfile.ticker).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["explore", "overview", userId] })
+      })
+    }
+  }, [selectedCompanyProfile?.ticker, userId])
+
+  // ── Master Companies Directory (Loaded dynamically from Spring Boot PostgreSQL Engine) ──
+  const { data: allCompaniesData, isLoading: isCompaniesLoading } = useQuery({
+    queryKey: ["explore", "companies-all"],
+    queryFn: () => exploreService.getCompanies({ size: 100 }),
+    staleTime: 60_000,
+  })
+  const allCompanies = allCompaniesData?.content || []
+
+  // ── Merged Live Spring Boot Overview Datasets ──
+  const liveMostInvested = backendOverview?.todaysMostInvested || []
+  const liveLeastInvested = backendOverview?.todaysLeastInvested || []
+  const liveTopGainers = backendOverview?.todaysTopGainers || []
+  const liveTopLosers = backendOverview?.todaysTopLosers || []
+  const liveMostActive = backendOverview?.todaysMostActive || []
+  const liveNewHighs = backendOverview?.todays52wHighs || []
+
+  const liveRecentlyViewed = (backendOverview?.recentlyViewed || []).map((c) => ({
+    id: String(c.id),
+    name: c.name,
+    shortName: c.shortName,
+    ticker: c.ticker,
+    sector: c.sector,
+    status: "Active Trading",
+    valuation: c.valuation || "$42.5M",
+    change: c.change || "+5.0%",
+    isPositive: c.isPositive !== false,
+    logoColor: c.logoBg || "bg-indigo-600",
+  }))
+
+  const liveRecentlyAdded = (backendOverview?.recentlyAdded || []).map((c) => ({
+    id: String(c.id),
+    name: c.name,
+    ticker: c.ticker,
+    tagline: c.description ? c.description.slice(0, 85) + "..." : "Registered operating corporate issuer on White Quantex.",
+    sector: c.sector,
+    status: c.status,
+    location: c.headquarters,
+    annualRevenue: c.annualRevenue,
+    valuation: c.valuation,
+    founded: c.foundedYear,
+    verification: c.verificationLevel,
+    trustScore: c.trustScore,
+    cik: c.cik,
+    logoColor: c.logoColor || "bg-indigo-600",
+  }))
+
+  // ── Database-Driven Explore Sections (PostgreSQL Truth Engine) ──
+  const liveUpcoming: UpcomingCompany[] = backendOverview?.upcomingCompanies || []
+  const liveRecommendations: WqRecommendation[] = backendOverview?.wqRecommendations || []
+  const liveSchemes: MutualScheme[] = backendOverview?.mutualInvestmentSchemes || []
+
+  // ── Invested Positions Dataset ──────────────────────────────────────────
+  const livePositions = (backendPositions || []).map((pos) => ({
+    name: pos.companyName,
+    ticker: pos.ticker,
+    ind: pos.sector,
+    eq: `${pos.ownershipPercent ? pos.ownershipPercent.toFixed(2) : "0.00"}%`,
+    shares: pos.shares ? pos.shares.toLocaleString() : "0",
+    inv: `$${pos.costBasis ? pos.costBasis.toLocaleString() : "0"}`,
+    val: `$${pos.currentValue ? pos.currentValue.toLocaleString() : "0"}`,
+    ret: `${(pos.unrealizedPlPercent ?? 0) >= 0 ? "+" : ""}${(pos.unrealizedPlPercent ?? 0).toFixed(1)}%`,
+    isPositive: (pos.unrealizedPlPercent ?? 0) >= 0,
+    st: "Active",
+  }))
+
+  // ── Computed Portfolio KPIs (derived from live database positions) ─────
+  const totalInvested = (backendPositions || []).reduce((acc, p) => acc + (p.costBasis || 0), 0)
+  const portfolioValue = (backendPositions || []).reduce((acc, p) => acc + (p.currentValue || 0), 0)
+  const unrealizedGain = portfolioValue - totalInvested
+  const totalReturnPercent = totalInvested > 0 ? (unrealizedGain / totalInvested) * 100 : 0
+
+  // ── Orders Dataset ──────────────────────────────────────────────────────
+  const liveOrders = (backendOrders || []).map((ord) => ({
+    id: ord.orderNumber || ord.id,
+    company: ord.companyName,
+    instrument: ord.shareClass || "Class A Common",
+    amount: `$${(ord.totalAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+    shares: `${(ord.shares ?? 0).toLocaleString()} @ $${(ord.pricePerShare ?? 0).toFixed(2)}`,
+    date: ord.executedAt ? ord.executedAt.replace("T", " ").slice(0, 19) : "2026-09-13 10:00:00",
+    status: ord.status,
+    statusLabel: ord.status === "FILLED" ? "Executed & Settled" : "Pending Escrow Signature",
+    badge: ord.status === "FILLED" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500",
+  }))
+
+  // ── News & Notifications Dataset ────────────────────────────────────────
+  const liveHoldingsNews = (backendNews || [])
+    .filter((n) => !n.isActionRequired)
+    .map((n) => ({
+      id: n.id,
+      ticker: n.ticker,
+      companyName: n.companyName,
+      logoColor: n.logoColor || "bg-indigo-600",
+      category: n.category,
       categoryColor: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-      title: "TechFlow AI Closes $40M Enterprise Cloud Inference Deal; ARR Exceeds $15M",
-      time: "25m ago",
-      source: "TechCrunch Venture",
-      sentiment: "Bullish",
-      snippet:
-        "TechFlow AI signed a 3-year enterprise cloud compute agreement with a Fortune 50 consortium. Annual recurring revenue (ARR) surged past $15.2M (+112% YoY), reinforcing strong momentum leading into its upcoming Series B pricing round.",
-      readTime: "3 min read",
-      impactMetric: "+18.4% Valuation Uplift",
-      detailBullet1: "Tier-1 enterprise consortium guarantees minimum $13.3M annual compute commitment through 2029.",
-      detailBullet2: "Gross margins on neural runtime operations expanded by 420 bps to 68.4%.",
-      detailBullet3: "Your holding: 8,500 shares (0.85% equity) with current unrealized return of +54.0%.",
-    },
-    {
-      id: "hn-2",
-      ticker: "GGRID",
-      companyName: "GreenLeaf Energy",
-      logoColor: "bg-emerald-600",
-      category: "Municipal EPC Contract",
-      categoryColor: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
-      title: "GreenLeaf Energy Secures $30M Municipal Solar Microgrid Contract in Nevada",
-      time: "2h ago",
-      source: "CleanTech Investor Daily",
-      sentiment: "Positive",
-      snippet:
-        "Nevada Clean Energy District awarded GreenLeaf Energy the primary EPC and operations contract for 45MWh modular storage installations. Long-term energy off-take agreements guarantee recurring cash yields through 2038.",
-      readTime: "2 min read",
-      impactMetric: "+9.2% Cash Flow Projection",
-      detailBullet1: "Guaranteed power purchase agreement (PPA) with fixed $0.114/kWh floor indexation.",
-      detailBullet2: "Phase 1 commercial interconnection approved for Q1 2027 commercial operation.",
-      detailBullet3: "Your holding: 4,000 shares (0.40% equity) with quarterly yield credited Sep 12.",
-    },
-    {
-      id: "hn-3",
-      ticker: "QMAT",
-      companyName: "Quantum Materials Corp",
-      logoColor: "bg-violet-600",
-      category: "Patent Moat",
-      categoryColor: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
-      title: "USPTO Grants Quantum Materials Core Patent for Zero-Resistance Nanocrystal Wafers",
-      time: "5h ago",
-      source: "Nanotechnology Review",
-      sentiment: "Breakthrough",
-      snippet:
-        "The US Patent and Trademark Office formally issued Patent #11,894,221 safeguarding Quantum Materials' proprietary atomic vapor deposition method. Commercial tier-1 semiconductor fabrication plants have initiated trial qualification runs.",
-      readTime: "4 min read",
-      impactMetric: "Defensible IP Moat",
-      detailBullet1: "Covers room-temperature atomic vapor synthesis with zero structural lattice defects.",
-      detailBullet2: "Three global semiconductor foundries signed joint development agreements (JDAs).",
-      detailBullet3: "Your holding: 2,500 shares (0.25% equity) authenticated on-chain.",
-    },
-    {
-      id: "hn-4",
-      ticker: "TFLOW",
-      companyName: "TechFlow AI Solutions",
-      logoColor: "bg-indigo-600",
-      category: "Product Benchmark",
-      categoryColor: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-      title: "TechFlow AI Unveils Distributed Reasoning Engine v3.2 with 65% Lower GPU Energy",
-      time: "1d ago",
-      source: "VentureBeat AI",
-      sentiment: "Bullish",
-      snippet:
-        "New benchmark reports verify 4x inference throughput across complex financial time-series predictions. Enterprise beta partners report monthly infrastructure cost reductions averaging $180,000.",
-      readTime: "3 min read",
-      impactMetric: "Margin Expansion",
-      detailBullet1: "Benchmarked 4.2x faster than legacy distributed transformer clusters on NVIDIA H100s.",
-      detailBullet2: "Proprietary sparsity algorithms reduce parameter footprint by 65% without loss of precision.",
-      detailBullet3: "Expected to drive 35% upsell on existing enterprise software licenses.",
-    },
-    {
-      id: "hn-5",
-      ticker: "GGRID",
-      companyName: "GreenLeaf Energy",
-      logoColor: "bg-emerald-600",
-      category: "Regulatory Approval",
-      categoryColor: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20",
-      title: "European Union Grants Fast-Track CE Certification for GreenLeaf Commercial Battery Cells",
-      time: "2d ago",
-      source: "Bloomberg Clean Energy",
-      sentiment: "Positive",
-      snippet:
-        "The European Energy Transition Commission awarded statutory CE certification under fast-track provisions. GreenLeaf is authorized for direct deployment across 18 EU member nations starting Q4 2026.",
-      readTime: "2 min read",
-      impactMetric: "EU Market Access",
-      detailBullet1: "Compliance achieved with zero hazardous heavy metal disposal requirements.",
-      detailBullet2: "Initial distribution pipeline established with German and Nordic utility networks.",
-      detailBullet3: "Supports planned international commercial expansion ahead of Series B round.",
-    },
-    {
-      id: "hn-6",
-      ticker: "QMAT",
-      companyName: "Quantum Materials Corp",
-      logoColor: "bg-violet-600",
-      category: "Production Metric",
-      categoryColor: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-      title: "Quantum Materials Corp Reports 62% Increase in Production Run Shipments for Q2",
-      time: "3d ago",
-      source: "Wall Street Journal Venture",
-      sentiment: "Bullish",
-      snippet:
-        "Quarterly manufacturing throughput reached 15,400 specialized substrate wafers, propelled by demand from quantum computing hardware makers and satellite communication vendors. Unit gross margin improved to 44.8%.",
-      readTime: "4 min read",
-      impactMetric: "+62% Production Inflow",
-      detailBullet1: "Shipments jumped from 9,500 units in Q1 to 15,400 units in Q2 2026.",
-      detailBullet2: "Backlog of verified orders stands at $18.6M across aerospace & quantum verticals.",
-      detailBullet3: "Annual general meeting proxy voting currently open for all registered shareholders.",
-    },
-  ]
+      title: n.title,
+      time: n.publishedAt ? new Date(n.publishedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Recently",
+      source: n.source || "Corporate News Wire",
+      sentiment: n.sentiment || "Bullish",
+      snippet: n.snippet,
+      readTime: n.readTime || "3 min read",
+      impactMetric: n.impactMetric || "+10.0% Valuation Uplift",
+      detailBullet1: "Verified institutional filing submitted to regulatory ledger.",
+      detailBullet2: "Operations performing ahead of quarterly guidance targets.",
+      detailBullet3: "Corporate equity allocation fully reconciled.",
+    }))
 
-  const holdingsNotifications = [
-    {
-      id: "notif-1",
-      ticker: "QMAT",
-      companyName: "Quantum Materials Corp",
-      type: "ACTION",
-      category: "Shareholder Proxy Vote",
-      badge: "Action Required",
-      badgeColor: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30",
-      title: "Annual General Meeting (AGM) Proxy Ballot: 2026 Board Slate & Equity Pool",
-      time: "1h ago",
-      urgency: "High",
-      dueDate: "Closes Oct 15, 2026",
-      holdingContext: "Holder of 2,500 Shares (0.25% Common Equity)",
-      content:
-        "Your official shareholder proxy ballot is open for the upcoming Annual General Meeting. As an authenticated shareholder, you have the statutory right to cast your vote on: (1) Re-election of 4 independent board members, and (2) Authorization of a 10% unallocated employee stock option pool.",
-      actionLabel: "Cast Proxy Vote",
-      actionType: "vote",
-      isUrgent: true,
-    },
-    {
-      id: "notif-2",
-      ticker: "TFLOW",
-      companyName: "TechFlow AI Solutions",
-      type: "NOTIFICATIONS",
-      category: "Cap Table & Round Financing",
-      badge: "Valuation Uplift",
-      badgeColor: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
-      title: "Series B Term Sheet Received: $120M Pre-Money Valuation Proposed",
-      time: "3h ago",
-      urgency: "Medium",
-      dueDate: "Informational",
-      holdingContext: "Holder of 8,500 Shares (0.85% Equity · +$42,000 Unofficial Uplift)",
-      content:
-        "The board of directors has received and signed a non-binding term sheet led by a tier-1 venture firm for $40M Series B at a $120M pre-money valuation ($14.11/share). If finalized, your 8,500 shares will have an implied pro-forma value of $119,935.",
-      actionLabel: "Review Term Sheet Summary",
-      actionType: "term_sheet",
-      isUrgent: false,
-    },
-    {
-      id: "notif-3",
-      ticker: "GGRID",
-      companyName: "GreenLeaf Energy",
-      type: "NOTIFICATIONS",
-      category: "Dividend & Cash Yield",
-      badge: "Cash Credited",
-      badgeColor: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30",
-      title: "Quarterly Revenue Share Credited: $320.00 to Custody Cash",
-      time: "1d ago",
-      urgency: "Normal",
-      dueDate: "Settled Sep 12",
-      holdingContext: "Holder of 4,000 Shares (0.40% Equity · $0.08/share yield)",
-      content:
-        "Your quarterly operating yield distribution of $320.00 has been credited directly to your White Quantex Primary Escrow Custody Account. Settlement verification code #WQ-DIST-9921.",
-      actionLabel: "View Settlement Receipt",
-      actionType: "settlement",
-      isUrgent: false,
-    },
-    {
-      id: "notif-4",
-      ticker: "TFLOW",
-      companyName: "TechFlow AI Solutions",
-      type: "NOTIFICATIONS",
-      category: "Shareholder Reporting",
-      badge: "Q2 Filing Available",
-      badgeColor: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30",
-      title: "Q2 2026 Shareholder Update & Audited GAAP Financial Statements",
-      time: "2d ago",
-      urgency: "Normal",
-      dueDate: "Available in Data Room",
-      holdingContext: "Holder of 8,500 Shares (0.85% Equity)",
-      content:
-        "CEO Dr. Elena Rostova has released the comprehensive Q2 Shareholder Report covering GAAP audited balance sheets, unit economics, runway projections through 2028, and corporate milestones.",
-      actionLabel: "Download Financials (PDF)",
-      actionType: "download",
-      isUrgent: false,
-    },
-    {
-      id: "notif-5",
-      ticker: "QMAT",
-      companyName: "Quantum Materials Corp",
-      type: "NOTIFICATIONS",
-      category: "Corporate Governance",
-      badge: "Cap Table Verified",
-      badgeColor: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
-      title: "Delaware C-Corp Cap Table Registry Audit Completed",
-      time: "4d ago",
-      urgency: "Normal",
-      dueDate: "Annual Audit",
-      holdingContext: "Holder of 2,500 Shares · Certificate #WQ-QMAT-8841",
-      content:
-        "KPMG has completed the annual cap table and shareholder registry compliance audit for Quantum Materials Corp. Your holding certificate #WQ-QMAT-8841 is re-certified and recorded on the authoritative ledger.",
-      actionLabel: "Inspect Digital Share Deed",
-      actionType: "deed",
-      isUrgent: false,
-    },
-  ]
+  const liveHoldingsNotifications = (backendNews || [])
+    .filter((n) => n.isActionRequired)
+    .map((n) => ({
+      id: n.id,
+      ticker: n.ticker,
+      companyName: n.companyName,
+      type: "ACTION" as const,
+      category: n.category,
+      badge: n.urgency === "High" ? "Action Required" : "Corporate Update",
+      badgeColor: n.urgency === "High" ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+      title: n.title,
+      time: n.publishedAt ? new Date(n.publishedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Recently",
+      urgency: n.urgency || "Normal",
+      dueDate: n.dueDate || "Notice Period Open",
+      holdingContext: "Registered Holding",
+      content: n.snippet,
+      actionLabel: n.actionLabel || "Cast Proxy Vote",
+      actionType: n.actionType || "vote",
+      isUrgent: n.urgency === "High",
+    }))
 
-  const newsItems = [
-    {
-      id: "n1",
-      tag: "Funding",
-      tagColor: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-      title: "Quantum Materials raises $18M Series A led by Apex Ventures",
-      time: "4m ago",
-    },
-    {
-      id: "n2",
-      tag: "Regulation",
-      tagColor: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
-      title: "SEC releases updated accredited investor guidelines for private venture secondary trading",
-      time: "28m ago",
-    },
-    {
-      id: "n3",
-      tag: "Market",
-      tagColor: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
-      title: "CleanTech Venture Index hits quarterly high on European smart grid contracts",
-      time: "1h ago",
-    },
-    {
-      id: "n4",
-      tag: "Deal Flow",
-      tagColor: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-      title: "BioVanguard initiates fast-track Phase I oncology platform fundraising",
-      time: "2h ago",
-    },
-  ]
-
-  const recentlyViewed = [
-    {
-      id: "rv-1",
-      name: "QuantumFlow AI",
-      ticker: "QFLOW",
-      sector: "AI / ML",
-      stage: "Series A",
-      valuation: "$42.5M",
-      change: "+14.2%",
-      isPositive: true,
-      logoColor: "bg-indigo-600",
-    },
-    {
-      id: "rv-2",
-      name: "GreenGrid Energy",
-      ticker: "GGRID",
-      sector: "CleanTech",
-      stage: "Seed",
-      valuation: "$18.0M",
-      change: "+6.8%",
-      isPositive: true,
-      logoColor: "bg-emerald-600",
-    },
-    {
-      id: "rv-3",
-      name: "NovaPay Technologies",
-      ticker: "NPAY",
-      sector: "Fintech",
-      stage: "Series B",
-      valuation: "$65.0M",
-      change: "+3.1%",
-      isPositive: true,
-      logoColor: "bg-cyan-600",
-    },
-    {
-      id: "rv-4",
-      name: "Helix BioLabs",
-      ticker: "HLIX",
-      sector: "Biotech",
-      stage: "Series A",
-      valuation: "$29.4M",
-      change: "-1.5%",
-      isPositive: false,
-      logoColor: "bg-rose-600",
-    },
-    {
-      id: "rv-5",
-      name: "Orbital Dynamics",
-      ticker: "ORBD",
-      sector: "SpaceTech",
-      stage: "Series A",
-      valuation: "$88.0M",
-      change: "+22.5%",
-      isPositive: true,
-      logoColor: "bg-amber-600",
-    },
-  ]
-
-  const mostInvestedCompanies = [
-    {
-      id: "mi-1",
-      rank: 1,
-      name: "TechFlow AI Solutions",
-      sector: "AI & Distributed Cloud",
-      investedToday: "$1,420,000",
-      percentFunded: 88,
-      target: "$2,500,000",
-      change: "+28.4%",
-    },
-    {
-      id: "mi-2",
-      rank: 2,
-      name: "AeroCarbon Solutions",
-      sector: "CleanTech & Energy",
-      investedToday: "$950,000",
-      percentFunded: 74,
-      target: "$1,800,000",
-      change: "+19.2%",
-    },
-    {
-      id: "mi-3",
-      rank: 3,
-      name: "CyberShield Vault",
-      sector: "Cybersecurity & Web3",
-      investedToday: "$780,000",
-      percentFunded: 92,
-      target: "$3,000,000",
-      change: "+15.7%",
-    },
-    {
-      id: "mi-4",
-      rank: 4,
-      name: "MediSync Robotics",
-      sector: "HealthTech Surgical",
-      investedToday: "$640,000",
-      percentFunded: 65,
-      target: "$2,000,000",
-      change: "+11.3%",
-    },
-  ]
-
-  const leastInvestedCompanies = [
-    {
-      id: "li-1",
-      rank: 1,
-      name: "SolarHarvest Materials",
-      sector: "AgriTech & Solar",
-      raised: "$45,000",
-      percentFunded: 18,
-      target: "$650,000",
-      daysLeft: 21,
-    },
-    {
-      id: "li-2",
-      rank: 2,
-      name: "OmniLogic NeuroTech",
-      sector: "DeepTech Neuro",
-      raised: "$62,000",
-      percentFunded: 24,
-      target: "$800,000",
-      daysLeft: 16,
-    },
-    {
-      id: "li-3",
-      rank: 3,
-      name: "AgriPulse Sensor Net",
-      sector: "IoT & Agriculture",
-      raised: "$85,000",
-      percentFunded: 31,
-      target: "$750,000",
-      daysLeft: 12,
-    },
-    {
-      id: "li-4",
-      rank: 4,
-      name: "DataForge Storage",
-      sector: "Decentralized Infra",
-      raised: "$110,000",
-      percentFunded: 38,
-      target: "$900,000",
-      daysLeft: 9,
-    },
-  ]
-
+  // ── Financial Modeling Tools ─────────────────────────────────────────────
   const toolsList = [
     {
       id: "tool-1",
@@ -496,97 +455,95 @@ export default function ExplorePage() {
     },
   ]
 
-  const recentlyAddedCompanies = [
-    {
-      id: "ra-1",
-      name: "Aether Dynamics",
-      tagline: "Autonomous satellite constellations for orbital telemetry and micro-payloads.",
-      sector: "SpaceTech",
-      stage: "Series A",
-      location: "Seattle, WA",
-      seeking: "$5.0M",
-      founded: 2024,
-      verification: "PLATINUM",
-      trustScore: 96,
-    },
-    {
-      id: "ra-2",
-      name: "BioVanguard Labs",
-      tagline: "Precision oncology therapeutics targeting drug-resistant solid tumor malignancies.",
-      sector: "Biotech",
-      stage: "Seed",
-      location: "Boston, MA",
-      seeking: "$2.8M",
-      founded: 2025,
-      verification: "GOLD",
-      trustScore: 92,
-    },
-    {
-      id: "ra-3",
-      name: "FinLedger Core",
-      tagline: "Zero-knowledge cryptographic ledger for institutional cross-border clearing.",
-      sector: "Fintech",
-      stage: "Pre-Seed",
-      location: "New York, NY",
-      seeking: "$1.2M",
-      founded: 2025,
-      verification: "GOLD",
-      trustScore: 89,
-    },
-    {
-      id: "ra-4",
-      name: "TerraVolt Storage",
-      tagline: "Solid-state electrolyte lithium cells engineered for grid-scale renewable storage.",
-      sector: "CleanTech",
-      stage: "Series A",
-      location: "Austin, TX",
-      seeking: "$7.5M",
-      founded: 2024,
-      verification: "PLATINUM",
-      trustScore: 98,
-    },
-    {
-      id: "ra-5",
-      name: "CogniSense AI",
-      tagline: "Self-correcting multimodal reasoning engines for enterprise ERP integration.",
-      sector: "AI / ML",
-      stage: "Seed",
-      location: "San Francisco, CA",
-      seeking: "$3.0M",
-      founded: 2025,
-      verification: "PLATINUM",
-      trustScore: 94,
-    },
-    {
-      id: "ra-6",
-      name: "AgriDrone Sentinel",
-      tagline: "Autonomous multispectral crop health detection drones with automated intervention.",
-      sector: "AgriTech",
-      stage: "Seed",
-      location: "Des Moines, IA",
-      seeking: "$1.8M",
-      founded: 2024,
-      verification: "SILVER",
-      trustScore: 88,
-    },
-  ]
+  // ── Helper to open company dossier ──────────────────────────────────────
+  const openCompanyDossier = (comp: any) => {
+    if (!comp) return
+    const ticker = comp.ticker || comp.symbol
+    const found = allCompanies.find((c) => c.ticker === ticker || c.id === comp.id)
+    if (found) {
+      setSelectedCompanyProfile({
+        id: found.id,
+        name: found.name,
+        shortName: found.shortName,
+        ticker: found.ticker,
+        legalEntity: found.legalEntity,
+        cik: found.cik,
+        sector: found.sector,
+        subIndustry: found.subIndustry,
+        headquarters: found.headquarters,
+        location: found.headquarters,
+        founded: found.foundedYear,
+        ceo: found.ceo,
+        employees: found.employees,
+        valuation: found.valuation,
+        annualRevenue: found.annualRevenue,
+        verification: found.verificationLevel,
+        trustScore: found.trustScore,
+        description: found.description,
+        exchangeTier: found.exchangeTier,
+        status: found.status,
+      })
+    } else {
+      setSelectedCompanyProfile(comp)
+    }
+  }
+
+  // ── Derived Companies Index Filters (Strictly Companies, Not Ventures) ───
+  const indexSectorList = ["All", "AI & ML", "CleanTech", "Fintech", "SpaceTech", "Biotech", "SaaS", "Robotics"]
+  const alphabetLetters = ["ALL", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")]
+
+  const filteredCompaniesIndex = allCompanies
+    .filter((comp) => {
+      const q = indexSearchQuery.toLowerCase().trim()
+      const matchesQuery =
+        !q ||
+        comp.name.toLowerCase().includes(q) ||
+        comp.ticker.toLowerCase().includes(q) ||
+        comp.sector.toLowerCase().includes(q) ||
+        comp.subIndustry.toLowerCase().includes(q) ||
+        comp.ceo.toLowerCase().includes(q) ||
+        comp.headquarters.toLowerCase().includes(q) ||
+        comp.legalEntity.toLowerCase().includes(q) ||
+        comp.cik.toLowerCase().includes(q)
+
+      const matchesLetter =
+        indexSelectedLetter === "ALL" ||
+        comp.name.toUpperCase().startsWith(indexSelectedLetter)
+
+      const matchesSector =
+        indexSelectedSector === "All" || comp.sector === indexSelectedSector
+
+      return matchesQuery && matchesLetter && matchesSector
+    })
+    .sort((a, b) => {
+      if (indexSortBy === "name") {
+        return a.name.localeCompare(b.name)
+      } else if (indexSortBy === "valuation") {
+        return (b.valuationNum || 0) - (a.valuationNum || 0)
+      } else if (indexSortBy === "founded") {
+        return (b.foundedYear || 0) - (a.foundedYear || 0)
+      } else if (indexSortBy === "employees") {
+        return (b.employees || 0) - (a.employees || 0)
+      }
+      return 0
+    })
 
   return (
     <div className="w-full max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 py-6 space-y-6">
       
       {/* ═════════════════════════════════════════════════════════════════════ */}
-      {/* MASTER GRID CONTAINER: Structured layout matching the wireframe      */}
-      {/* ═════════════════════════════════════════════════════════════════════ */}
-      <div className="border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#07090b] rounded-2xl shadow-xs overflow-hidden divide-y divide-slate-200 dark:divide-zinc-800 transition-colors">
+      {/* MASTER CONTAINER: Clean borderless modern layout */}
+      <div className="bg-white dark:bg-[#07090b] rounded-2xl shadow-xs overflow-hidden transition-colors space-y-4 sm:space-y-6">
 
         {/* ───────────────────────────────────────────────────────────────── */}
         {/* ROW 1: Sub-Nav Links & Tab Header Area                            */}
         {/* ───────────────────────────────────────────────────────────────── */}
         <div className="w-full p-4 sm:p-6 space-y-4">
           {/* Top Sub-Nav Bar: Navigation Links */}
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pb-3 border-b border-slate-100 dark:border-zinc-800/80">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pb-2">
             {[
               { id: "search", label: "Search", href: "/explore" },
+              { id: "index", label: "Index", href: "/explore?tab=index" },
               { id: "positions", label: "Positions", href: "/explore?tab=positions" },
               { id: "orders", label: "Orders", href: "/explore?tab=orders" },
               { id: "my_watchlist", label: "My Watchlist", href: "/explore?tab=my_watchlist" },
@@ -609,7 +566,7 @@ export default function ExplorePage() {
                     <span className="inline-flex items-center gap-1 ml-0.5">
                       <span className="h-1.5 w-1.5 rounded-full bg-[#00d09c] animate-pulse" />
                       <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-                        {holdingsNotifications.length + holdingsNews.length}
+                        {liveHoldingsNotifications.length + liveHoldingsNews.length}
                       </span>
                     </span>
                   )}
@@ -626,14 +583,28 @@ export default function ExplorePage() {
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setSearchQuery(val)
+                    if (!val.trim()) {
+                      setSelectedTag("All Companies")
+                    } else {
+                      const matchedTag = ["Fintech", "AI & ML", "CleanTech", "SaaS", "Biotech", "SpaceTech"].find(
+                        (t) => t.toLowerCase() === val.trim().toLowerCase()
+                      )
+                      setSelectedTag(matchedTag || "")
+                    }
+                  }}
                   placeholder="Search companies..."
                   aria-label="Search companies"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/80 dark:bg-zinc-900/60 text-slate-900 dark:text-white text-xs sm:text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00d09c] focus:border-transparent transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border-0 bg-slate-100/90 dark:bg-zinc-900 text-slate-900 dark:text-white text-xs sm:text-sm placeholder-slate-400 focus:outline-none focus:bg-slate-100 dark:focus:bg-zinc-800 transition-all"
                 />
                 {searchQuery && (
                   <button
-                    onClick={() => setSearchQuery("")}
+                    onClick={() => {
+                      setSearchQuery("")
+                      setSelectedTag("All Companies")
+                    }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
                   >
                     Clear
@@ -641,71 +612,72 @@ export default function ExplorePage() {
                 )}
               </div>
 
+              {/* Quick Company Sector Filter Chips */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 mr-1">
+                  Company Sectors:
+                </span>
+                {["All Companies", "Fintech", "AI & ML", "CleanTech", "SaaS", "Biotech", "SpaceTech"].map((tag) => {
+                  const isSelected = selectedTag === tag || (selectedTag === "All" && tag === "All Companies")
+                  return (
+                    <button
+                      key={tag}
+                      onClick={() => {
+                        setSelectedTag(tag)
+                        if (tag === "All Companies") {
+                          setSearchQuery("")
+                        } else {
+                          setSearchQuery(tag)
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors cursor-pointer border ${
+                        isSelected
+                          ? "bg-[#00d09c]/15 text-[#00a87e] dark:text-[#00d09c] font-bold border-[#00d09c]/40 shadow-[0_0_8px_rgba(0,208,156,0.15)]"
+                          : "bg-slate-100 dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 hover:bg-slate-200/80 dark:hover:bg-zinc-800 dark:hover:text-white border-transparent dark:border-zinc-800"
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  )
+                })}
+              </div>
+
               {/* Live Matching Companies Dropdown / Results */}
-              {searchQuery.trim() ? (
-                <div className="p-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/95 shadow-md space-y-2">
+              {searchQuery.trim() && (
+                <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 shadow-xl space-y-2">
                   <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-zinc-400">
                     <span>Matching Companies ({
-                      [
-                        { name: "TechFlow AI Solutions", ticker: "TFLOW", sector: "AI / ML", stage: "Series A", valuation: "$42.5M" },
-                        { name: "GreenGrid Energy", ticker: "GGRID", sector: "CleanTech", stage: "Seed", valuation: "$18.0M" },
-                        { name: "NovaPay Technologies", ticker: "NPAY", sector: "Fintech", stage: "Series B", valuation: "$65.0M" },
-                        { name: "Helix BioLabs", ticker: "HLIX", sector: "Biotech", stage: "Series A", valuation: "$29.4M" },
-                        { name: "Orbital Dynamics", ticker: "ORBD", sector: "SpaceTech", stage: "Series A", valuation: "$88.0M" },
-                        { name: "AeroCarbon Solutions", ticker: "CARB", sector: "CleanTech", stage: "Seed", valuation: "$24.0M" },
-                        { name: "CyberShield Vault", ticker: "CYBR", sector: "Cybersecurity", stage: "Series B", valuation: "$52.0M" },
-                        { name: "MediSync Robotics", ticker: "MEDS", sector: "HealthTech", stage: "Series A", valuation: "$35.0M" },
-                        { name: "SolarHarvest Materials", ticker: "SHRV", sector: "AgriTech", stage: "Seed", valuation: "$12.0M" },
-                        { name: "OmniLogic NeuroTech", ticker: "OMNI", sector: "DeepTech", stage: "Pre-Seed", valuation: "$9.5M" },
-                        { name: "DataForge Storage", ticker: "DFRG", sector: "Web3 Infra", stage: "Seed", valuation: "$14.0M" },
-                        { name: "Aether Dynamics", ticker: "AETH", sector: "SpaceTech", stage: "Series A", valuation: "$48.0M" },
-                        { name: "BioVanguard Labs", ticker: "BVGD", sector: "Biotech", stage: "Seed", valuation: "$22.0M" },
-                        { name: "FinLedger Core", ticker: "FLED", sector: "Fintech", stage: "Pre-Seed", valuation: "$11.0M" },
-                        { name: "TerraVolt Storage", ticker: "TVLT", sector: "CleanTech", stage: "Series A", valuation: "$62.0M" },
-                        { name: "CogniSense AI", ticker: "CGNS", sector: "AI / ML", stage: "Seed", valuation: "$28.0M" },
-                      ].filter(
+                      allCompanies.filter(
                         (c) =>
                           c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           c.ticker.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          c.sector.toLowerCase().includes(searchQuery.toLowerCase())
+                          c.sector.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          c.cik.toLowerCase().includes(searchQuery.toLowerCase())
                       ).length
                     })</span>
-                    <span className="text-[#00d09c] text-[10px]">Company Search</span>
+                    <span className="text-[#00d09c] text-[10px]">Corporate Issuer Registry</span>
                   </div>
 
-                  <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-zinc-800/80">
-                    {[
-                      { name: "TechFlow AI Solutions", ticker: "TFLOW", sector: "AI / ML", stage: "Series A", valuation: "$42.5M" },
-                      { name: "GreenGrid Energy", ticker: "GGRID", sector: "CleanTech", stage: "Seed", valuation: "$18.0M" },
-                      { name: "NovaPay Technologies", ticker: "NPAY", sector: "Fintech", stage: "Series B", valuation: "$65.0M" },
-                      { name: "Helix BioLabs", ticker: "HLIX", sector: "Biotech", stage: "Series A", valuation: "$29.4M" },
-                      { name: "Orbital Dynamics", ticker: "ORBD", sector: "SpaceTech", stage: "Series A", valuation: "$88.0M" },
-                      { name: "AeroCarbon Solutions", ticker: "CARB", sector: "CleanTech", stage: "Seed", valuation: "$24.0M" },
-                      { name: "CyberShield Vault", ticker: "CYBR", sector: "Cybersecurity", stage: "Series B", valuation: "$52.0M" },
-                      { name: "MediSync Robotics", ticker: "MEDS", sector: "HealthTech", stage: "Series A", valuation: "$35.0M" },
-                      { name: "SolarHarvest Materials", ticker: "SHRV", sector: "AgriTech", stage: "Seed", valuation: "$12.0M" },
-                      { name: "OmniLogic NeuroTech", ticker: "OMNI", sector: "DeepTech", stage: "Pre-Seed", valuation: "$9.5M" },
-                      { name: "DataForge Storage", ticker: "DFRG", sector: "Web3 Infra", stage: "Seed", valuation: "$14.0M" },
-                      { name: "Aether Dynamics", ticker: "AETH", sector: "SpaceTech", stage: "Series A", valuation: "$48.0M" },
-                      { name: "BioVanguard Labs", ticker: "BVGD", sector: "Biotech", stage: "Seed", valuation: "$22.0M" },
-                      { name: "FinLedger Core", ticker: "FLED", sector: "Fintech", stage: "Pre-Seed", valuation: "$11.0M" },
-                      { name: "TerraVolt Storage", ticker: "TVLT", sector: "CleanTech", stage: "Series A", valuation: "$62.0M" },
-                      { name: "CogniSense AI", ticker: "CGNS", sector: "AI / ML", stage: "Seed", valuation: "$28.0M" },
-                    ]
+                  <div className="max-h-48 overflow-y-auto space-y-0.5">
+                    {allCompanies
                       .filter(
                         (c) =>
                           c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           c.ticker.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          c.sector.toLowerCase().includes(searchQuery.toLowerCase())
+                          c.sector.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          c.cik.toLowerCase().includes(searchQuery.toLowerCase())
                       )
                       .map((comp) => (
-                        <Link
-                          key={comp.name}
-                          to="/explore"
+                        <div
+                          key={comp.id}
+                          onClick={() => { openCompanyDossier(comp); setSearchQuery(""); setSelectedTag("All Companies"); }}
                           className="p-2 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-zinc-800/60 rounded-lg transition-colors cursor-pointer"
                         >
                           <div className="flex items-center gap-2">
-                            <div className="h-7 w-7 rounded-md bg-emerald-500/10 text-[#00d09c] font-bold text-[10px] flex items-center justify-center">
+                            <div
+                              style={getCompanyLogoStyle(comp.logoColor, comp.ticker)}
+                              className="h-7 w-7 rounded-md text-white font-bold text-[10px] flex items-center justify-center shrink-0 ring-1 ring-slate-200/80 dark:ring-zinc-800"
+                            >
                               {comp.ticker.slice(0, 2)}
                             </div>
                             <div>
@@ -713,7 +685,7 @@ export default function ExplorePage() {
                                 {comp.name}
                               </span>
                               <span className="text-[10px] text-slate-400 dark:text-zinc-500 ml-2">
-                                ({comp.ticker}) · {comp.sector}
+                                ({comp.ticker}) · {comp.sector} · {comp.cik}
                               </span>
                             </div>
                           </div>
@@ -721,63 +693,45 @@ export default function ExplorePage() {
                             <span className="text-xs font-extrabold text-slate-900 dark:text-white block">
                               {comp.valuation}
                             </span>
-                            <span className="text-[10px] text-slate-400">{comp.stage}</span>
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">{comp.status}</span>
                           </div>
-                        </Link>
+                        </div>
                       ))}
                   </div>
-                </div>
-              ) : (
-                /* Quick Company Sector Filter Chips */
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                  <span className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 mr-1">
-                    Company Sectors:
-                  </span>
-                  {["All Companies", "Fintech", "AI & ML", "CleanTech", "SaaS", "Biotech", "SpaceTech"].map((tag) => (
-                    <button
-                      key={tag}
-                      onClick={() => setSelectedTag(tag)}
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors cursor-pointer border ${
-                        selectedTag === tag
-                          ? "bg-[#00d09c]/15 text-[#00a87e] dark:text-[#00d09c] border-[#00d09c]/40 font-bold"
-                          : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:border-slate-300 dark:hover:border-zinc-700"
-                      }`}
-                    >
-                      {tag}
-                    </button>
-                  ))}
                 </div>
               )}
             </div>
           )}
 
           {activeNavTab === "positions" && (
-            <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800 text-xs flex items-center justify-between">
+            <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800/60 text-xs flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
+                <div className="h-8 w-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500">
                   <PieChart className="h-4 w-4" />
                 </div>
                 <div>
                   <span className="font-bold text-slate-900 dark:text-white block">Active Portfolio Positions</span>
-                  <span className="text-[11px] text-slate-500 dark:text-zinc-400">3 Verified Holdings · Authoritative Spring Truth Engine</span>
+                  <span className="text-[11px] text-slate-500 dark:text-zinc-400">{livePositions.length} Verified Holdings · Authoritative Spring Truth Engine</span>
                 </div>
               </div>
               <div className="text-right">
-                <span className="font-extrabold text-[#00d09c] text-sm block">+$17,400.00 (+38.6%)</span>
+                <span className={`font-extrabold text-sm block ${unrealizedGain >= 0 ? "text-[#00d09c]" : "text-rose-500"}`}>
+                  {unrealizedGain >= 0 ? "+" : ""}${unrealizedGain.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({totalReturnPercent >= 0 ? "+" : ""}{totalReturnPercent.toFixed(1)}%)
+                </span>
                 <span className="text-[10px] text-slate-400">Unrealized P&L</span>
               </div>
             </div>
           )}
 
           {activeNavTab === "orders" && (
-            <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800 text-xs flex items-center justify-between">
+            <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800/60 text-xs flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500">
+                <div className="h-8 w-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
                   <FileCheck className="h-4 w-4" />
                 </div>
                 <div>
-                  <span className="font-bold text-slate-900 dark:text-white block">Venture Order Execution Book</span>
-                  <span className="text-[11px] text-slate-500 dark:text-zinc-400">4 Lifetime Orders · 1 Pending Escrow Signature</span>
+                  <span className="font-bold text-slate-900 dark:text-white block">Corporate Secondary Order Book</span>
+                  <span className="text-[11px] text-slate-500 dark:text-zinc-400">{liveOrders.filter(o => o.status === "FILLED").length} Lifetime Executions · {liveOrders.filter(o => o.status === "PENDING").length} Pending Escrow Settlement</span>
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
@@ -785,10 +739,10 @@ export default function ExplorePage() {
                   <button
                     key={filterKey}
                     onClick={() => setOrderFilter(filterKey)}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${
                       orderFilter === filterKey
-                        ? "bg-slate-900 text-white dark:bg-white dark:text-zinc-950 border-transparent shadow-xs"
-                        : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:border-slate-300"
+                        ? "bg-slate-900 text-white dark:bg-white dark:text-zinc-950 shadow-xs"
+                        : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700"
                     }`}
                   >
                     {filterKey}
@@ -799,14 +753,14 @@ export default function ExplorePage() {
           )}
 
           {activeNavTab === "my_watchlist" && (
-            <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800 text-xs flex items-center justify-between">
+            <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800/60 text-xs flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+                <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
                   <Bookmark className="h-4 w-4" />
                 </div>
                 <div>
                   <span className="font-bold text-slate-900 dark:text-white block">Custom Pinned Watchlist</span>
-                  <span className="text-[11px] text-slate-500 dark:text-zinc-400">4 Monitored Venture Deals · Real-time round progress</span>
+                  <span className="text-[11px] text-slate-500 dark:text-zinc-400">4 Monitored Corporate Issuers · Real-time market metrics</span>
                 </div>
               </div>
               <span className="text-xs font-bold text-emerald-600 dark:text-[#00d09c]">
@@ -816,9 +770,9 @@ export default function ExplorePage() {
           )}
 
           {activeNavTab === "all_watchlist" && (
-            <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800 text-xs flex items-center justify-between">
+            <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800/60 text-xs flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-500">
+                <div className="h-8 w-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500">
                   <Layers className="h-4 w-4" />
                 </div>
                 <div>
@@ -832,10 +786,42 @@ export default function ExplorePage() {
             </div>
           )}
 
-          {activeNavTab === "news" && (
-            <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {activeNavTab === "index" && (
+            <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800/60 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 shrink-0">
+                <div className="h-8 w-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500 shrink-0">
+                  <Building2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 dark:text-white block">
+                      Master Corporate Issuers & Companies Index
+                    </span>
+                    <span className="px-1.5 py-0.2 text-[10px] font-bold rounded bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                      Companies Only · No Ventures
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500 dark:text-zinc-400">
+                    Official registry of operating corporate entities, verified Delaware C-Corps, SEC CIK filings, and executive leadership. Excludes venture crowdfunding rounds.
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-full flex items-center gap-1">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {(backendOverview?.totalRegisteredCompanies || allCompanies.length || 25)} Verified Issuers
+                </span>
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400 hidden sm:inline">
+                  SEC Reg D / CIK Verified
+                </span>
+              </div>
+            </div>
+          )}
+
+          {activeNavTab === "news" && (
+            <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800/60 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 shrink-0">
                   <Bell className="h-4 w-4" />
                 </div>
                 <div>
@@ -843,12 +829,12 @@ export default function ExplorePage() {
                     Portfolio Intelligence & Shareholder Alerts
                   </span>
                   <span className="text-[11px] text-slate-500 dark:text-zinc-400">
-                    Direct coverage for your 3 active venture holdings: TechFlow AI (TFLOW), GreenLeaf Energy (GGRID), Quantum Materials (QMAT)
+                    Direct coverage for your 3 active corporate equity holdings: TechFlow AI (TFLOW), GreenLeaf Energy (GGRID), Quantum Materials (QMAT)
                   </span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold text-rose-500 bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/20 flex items-center gap-1">
+                <span className="text-[11px] font-bold text-rose-500 bg-rose-500/10 px-2.5 py-1 rounded-full flex items-center gap-1">
                   <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
                   1 Action Required
                 </span>
@@ -871,192 +857,510 @@ export default function ExplorePage() {
         {activeNavTab === "search" && (
           <>
             {/* ROW 2: Show all the Recently Viewed companies (Full Width) */}
-            <div className="p-4 sm:p-6 space-y-3">
+            <div className="p-3.5 sm:p-4 space-y-3 bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 rounded-2xl shadow-xs">
               <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <Eye className="h-4 w-4 text-[#00d09c]" />
-                    Recently Viewed Companies
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-                    Startups and venture campaigns you have recently inspected
-                  </p>
+                <div className="flex items-center gap-2">
+                  <div className="h-6 w-6 rounded-md bg-emerald-500/10 flex items-center justify-center">
+                    <Eye className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">Recently Viewed Companies</h3>
+                  </div>
                 </div>
-                <span className="text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer">
-                  View All ({recentlyViewed.length})
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setSearchParams({ tab: "index" })}
+                  className="text-[11px] font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer"
+                >
+                  Master Index ({liveRecentlyViewed.length}) →
+                </button>
               </div>
 
-              {/* Horizontal scrolling card deck */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-1">
-                {recentlyViewed.map((comp) => (
-                  <div
-                    key={comp.id}
-                    className="p-3.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40 hover:border-[#00d09c]/40 hover:bg-white dark:hover:bg-zinc-900/80 transition-all duration-200 group flex flex-col justify-between space-y-2"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className={`h-8 w-8 rounded-lg ${comp.logoColor} text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs`}>
+              {/* 5-Column on Mobile, 8-Column on Desktop Ticker Layout */}
+              {liveRecentlyViewed.length === 0 ? (
+                <div className="py-6 px-4 text-center rounded-xl bg-slate-50 dark:bg-zinc-900/60 border border-dashed border-slate-200 dark:border-zinc-800 my-1">
+                  <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">
+                    No recently viewed companies yet. Browse the Master Index or Sector categories to explore venture dossiers.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-5 md:grid-cols-8 gap-1.5 sm:gap-2.5 lg:gap-3 py-1">
+                  {liveRecentlyViewed.map((comp, idx) => (
+                    <button
+                      key={comp.id}
+                      type="button"
+                      onClick={() => {
+                        const profile = allCompanies.find((c) => c.ticker === comp.ticker) || (allCompanies[0] || null)
+                        setSelectedCompanyProfile(profile)
+                      }}
+                      className={`flex-col items-center justify-center p-2 rounded-xl hover:bg-slate-100/80 dark:hover:bg-zinc-800/60 border border-transparent hover:border-slate-200/80 dark:hover:border-zinc-700/50 transition-all text-center group cursor-pointer w-full ${
+                        idx >= 5 ? "hidden md:flex" : "flex"
+                      }`}
+                    >
+                      <div
+                        style={getCompanyLogoStyle(comp.logoColor, comp.ticker)}
+                        className="h-11 w-11 rounded-full flex items-center justify-center text-white font-extrabold text-xs shadow-xs mb-1.5 group-hover:scale-105 transition-transform ring-2 ring-slate-200/90 dark:ring-zinc-800 shrink-0"
+                      >
                         {comp.ticker.substring(0, 2)}
                       </div>
+                      <span className="font-bold text-slate-900 dark:text-zinc-200 text-[11px] sm:text-xs truncate w-full group-hover:text-emerald-600 dark:group-hover:text-[#00d09c] transition-colors">
+                        {comp.shortName}
+                      </span>
                       <span
-                        className={`inline-flex items-center gap-0.5 text-[11px] font-bold ${
-                          comp.isPositive ? "text-emerald-500" : "text-rose-500"
+                        className={`text-[11px] sm:text-xs font-extrabold mt-0.5 ${
+                          comp.isPositive ? "text-emerald-600 dark:text-[#00d09c]" : "text-rose-600 dark:text-rose-500"
                         }`}
                       >
-                        {comp.isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                         {comp.change}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ROW 3: Featured Market Movers (Todays Most Invested & Todays Top Gainers) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 items-start">
+              {/* Column 1: Todays most invested companies */}
+              <div className="p-3.5 sm:p-4 space-y-3 bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 rounded-2xl shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-md bg-emerald-500/10 flex items-center justify-center">
+                      <TrendingUp className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">Todays Most Invested Companies</h3>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-2 py-0.5 rounded-full">
+                    +$3.79M Inflow
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-5 gap-1.5 sm:gap-3 py-1">
+                  {liveMostInvested.map((comp) => {
+                    const delta = (comp as any).metricValue || comp.investedToday || "+$1.2M Inflow"
+                    return (
+                      <button
+                        key={comp.id}
+                        type="button"
+                        onClick={() => {
+                          const profile = allCompanies.find((c) => c.ticker === comp.ticker) || (allCompanies[0] || null)
+                          setSelectedCompanyProfile(profile)
+                        }}
+                        className="flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-xl hover:bg-slate-100/80 dark:hover:bg-zinc-800/60 border border-transparent hover:border-slate-200/80 dark:hover:border-zinc-700/50 transition-all text-center group cursor-pointer w-full min-w-0 min-h-[120px]"
+                      >
+                        <div
+                          style={getCompanyLogoStyle(comp.logoBg, comp.ticker)}
+                          className="h-11 w-11 rounded-full flex items-center justify-center text-white font-extrabold text-xs shadow-xs mb-1.5 group-hover:scale-105 transition-transform ring-2 ring-slate-200/90 dark:ring-zinc-800 shrink-0"
+                        >
+                          {comp.logoText || comp.ticker.substring(0, 2)}
+                        </div>
+                        <span className="font-bold text-slate-900 dark:text-zinc-200 text-[11px] sm:text-xs truncate w-full group-hover:text-emerald-600 dark:group-hover:text-[#00d09c] transition-colors">
+                          {comp.shortName}
+                        </span>
+                        <span className="text-[11px] sm:text-xs font-extrabold text-emerald-600 dark:text-[#00d09c] mt-0.5">
+                          +{comp.percentFunded}%
+                        </span>
+                        <span className="text-[10px] font-semibold text-emerald-700/90 dark:text-emerald-400/80">
+                          {delta}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <CategoryExplanationBox
+                  color="emerald"
+                  lines={[
+                    "Ranks operating issuers attracting the highest net secondary capital inflow over the past 24 hours.",
+                    "Reflects strong institutional allocator demand, rapid order matching, and high deal liquidity.",
+                    "Aggregated and verified continuously from settled escrow and clearing contracts on White Quantex.",
+                    "Signals robust investor conviction and active market accumulation for expanding Delaware entities.",
+                  ]}
+                />
+              </div>
+
+              {/* Column 2: Todays Top Gainers */}
+              <div className="p-3.5 sm:p-4 space-y-3 bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 rounded-2xl shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-md bg-emerald-500/10 flex items-center justify-center">
+                      <ArrowUpRight className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">Todays Top Gainers</h3>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-2 py-0.5 rounded-full">
+                    +$39.6M MCap Gain
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-5 gap-1.5 sm:gap-3 py-1">
+                  {liveTopGainers.map((comp) => {
+                    const delta = (comp as any).mcapDelta || (comp as any).metricValue || "+$5.0M"
+                    return (
+                      <button
+                        key={comp.id}
+                        type="button"
+                        onClick={() => {
+                          const profile = allCompanies.find((c) => c.ticker === comp.ticker) || (allCompanies[0] || null)
+                          setSelectedCompanyProfile(profile)
+                        }}
+                        className="flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-xl hover:bg-slate-100/80 dark:hover:bg-zinc-800/60 border border-transparent hover:border-slate-200/80 dark:hover:border-zinc-700/50 transition-all text-center group cursor-pointer w-full min-w-0 min-h-[120px]"
+                      >
+                        <div
+                          style={getCompanyLogoStyle(comp.logoBg, comp.ticker)}
+                          className="h-11 w-11 rounded-full flex items-center justify-center text-white font-extrabold text-xs shadow-xs mb-1.5 group-hover:scale-105 transition-transform ring-2 ring-slate-200/90 dark:ring-zinc-800 shrink-0"
+                        >
+                          {comp.logoText || comp.ticker.substring(0, 2)}
+                        </div>
+                        <span className="font-bold text-slate-900 dark:text-zinc-200 text-[11px] sm:text-xs truncate w-full group-hover:text-emerald-600 dark:group-hover:text-[#00d09c] transition-colors">
+                          {comp.shortName}
+                        </span>
+                        <span className="text-[11px] sm:text-xs font-extrabold text-emerald-600 dark:text-[#00d09c] mt-0.5">
+                          {comp.change} MCap
+                        </span>
+                        <span className="text-[10px] font-semibold text-emerald-700/90 dark:text-emerald-400/80">
+                          +{delta.replace(/^\+/, "")}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <CategoryExplanationBox
+                  color="emerald"
+                  lines={[
+                    "Highlights corporate issuers recording the largest percentage gain in market valuation today.",
+                    "Measures enterprise value expansion against the preceding 24-hour baseline clearing benchmark.",
+                    "Driven by positive quarterly audited performance, key enterprise contracts, or accretive financing.",
+                    "Demonstrates bullish market sentiment and competitive bidding across private secondary desks.",
+                  ]}
+                />
+              </div>
+            </div>
+
+            {/* VIEW ALL TOGGLE ACTION BAR (For Market Categories Only) */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-700 dark:text-zinc-300">
+                  <Layers className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                    {showAllSections ? "All Market Movers (6 Categories)" : "More Market Movers"}
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                    {showAllSections
+                      ? "Showing all 6 market categories: Most & Least Invested, Top Gainers & Losers, Most Active, and 52W Highs"
+                      : "View Todays Least Invested, Top Losers, Most Active, and 52W Highs"}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleToggleViewAll}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-100 shadow-xs active:scale-[0.98]"
+              >
+                {showAllSections ? (
+                  <>
+                    <span>Show Less</span>
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </>
+                ) : (
+                  <>
+                    <span>View All Categories</span>
+                    <span className="px-1.5 py-0.5 rounded-md text-[10px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-extrabold">+4</span>
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* COLLAPSIBLE REMAINING SECTIONS: Revealed when showAllSections is active */}
+            {showAllSections && (
+              <div className="space-y-4 lg:space-y-6">
+                {/* Remaining Market Categories (Least Invested, Top Losers, Most Active, 52W Highs) */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 items-start">
+                  {/* Column 1: Todays least invested companies */}
+                  <div className="p-3.5 sm:p-4 space-y-3 bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 rounded-2xl shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="h-6 w-6 rounded-md bg-amber-500/10 flex items-center justify-center">
+                          <Flame className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                        </div>
+                        <div>
+                          <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">Todays Least Invested Companies</h3>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-2 py-0.5 rounded-full">
+                        Low Inflow
                       </span>
                     </div>
 
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate group-hover:text-[#00d09c] transition-colors">
-                        {comp.name}
-                      </h4>
-                      <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                        <span>{comp.sector}</span>
-                        <span className="font-semibold text-slate-700 dark:text-zinc-300">{comp.stage}</span>
-                      </div>
+                    <div className="grid grid-cols-5 gap-1.5 sm:gap-3 py-1">
+                      {liveLeastInvested.map((comp) => {
+                        const delta = (comp as any).metricValue || comp.investedToday || comp.volume || "Low Inflow"
+                        return (
+                          <button
+                            key={comp.id}
+                            type="button"
+                            onClick={() => {
+                              const profile = allCompanies.find((c) => c.ticker === comp.ticker) || (allCompanies[0] || null)
+                              setSelectedCompanyProfile(profile)
+                            }}
+                            className="flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-xl hover:bg-slate-100/80 dark:hover:bg-zinc-800/60 border border-transparent hover:border-slate-200/80 dark:hover:border-zinc-700/50 transition-all text-center group cursor-pointer w-full min-w-0 min-h-[120px]"
+                          >
+                            <div
+                              style={getCompanyLogoStyle(comp.logoBg, comp.ticker)}
+                              className="h-11 w-11 rounded-full flex items-center justify-center text-white font-extrabold text-xs shadow-xs mb-1.5 group-hover:scale-105 transition-transform ring-2 ring-slate-200/90 dark:ring-zinc-800 shrink-0"
+                            >
+                              {comp.logoText || comp.ticker.substring(0, 2)}
+                            </div>
+                            <span className="font-bold text-slate-900 dark:text-zinc-200 text-[11px] sm:text-xs truncate w-full group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                              {comp.shortName}
+                            </span>
+                            <span className="text-[11px] sm:text-xs font-extrabold text-amber-600 dark:text-amber-400 mt-0.5">
+                              {comp.percentFunded}%
+                            </span>
+                            <span className="text-[10px] font-semibold text-amber-700/90 dark:text-amber-400/80">
+                              {delta}
+                            </span>
+                          </button>
+                        )
+                      })}
                     </div>
 
-                    <div className="pt-2 border-t border-slate-200/60 dark:border-zinc-800 flex items-center justify-between text-xs">
-                      <span className="text-[10px] text-slate-400">Valuation</span>
-                      <span className="font-extrabold text-slate-900 dark:text-white">{comp.valuation}</span>
-                    </div>
+                    <CategoryExplanationBox
+                      color="amber"
+                      lines={[
+                        "Identifies verified corporate issuers experiencing the lowest relative transaction flow today.",
+                        "Reflects temporary trading consolidation, limited active float, or quiet shareholder cycles.",
+                        "Helps value-oriented investors screen for undiscovered gems trading at discounted revenue multiples.",
+                        "Calculated by comparing executed secondary order volumes against platform sector averages.",
+                      ]}
+                    />
                   </div>
-                ))}
-              </div>
-            </div>
 
-            {/* ROW 3: Todays most invested companies | Todays least invested */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-zinc-800">
-              {/* Column 1: Todays most invested companies */}
-              <div className="p-4 sm:p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="h-7 w-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                      <TrendingUp className="h-4 w-4 text-emerald-500" />
+                  {/* Column 2: Todays Top Losers */}
+                  <div className="p-3.5 sm:p-4 space-y-3 bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 rounded-2xl shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="h-6 w-6 rounded-md bg-rose-500/10 flex items-center justify-center">
+                          <TrendingDown className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
+                        </div>
+                        <div>
+                          <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">Todays Top Losers</h3>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-2 py-0.5 rounded-full">
+                        -$4.09M MCap Loss
+                      </span>
                     </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">Todays Most Invested Companies</h3>
-                      <p className="text-[11px] text-slate-500 dark:text-zinc-400">Highest daily funding inflow & round momentum</p>
+
+                    <div className="grid grid-cols-5 gap-1.5 sm:gap-3 py-1">
+                      {liveTopLosers.map((comp) => {
+                        const delta = (comp as any).mcapDelta || (comp as any).metricValue || "-$2.0M"
+                        return (
+                          <button
+                            key={comp.id}
+                            type="button"
+                            onClick={() => {
+                              const profile = allCompanies.find((c) => c.ticker === comp.ticker) || (allCompanies[0] || null)
+                              setSelectedCompanyProfile(profile)
+                            }}
+                            className="flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-xl hover:bg-slate-100/80 dark:hover:bg-zinc-800/60 border border-transparent hover:border-slate-200/80 dark:hover:border-zinc-700/50 transition-all text-center group cursor-pointer w-full min-w-0 min-h-[120px]"
+                          >
+                            <div
+                              style={getCompanyLogoStyle(comp.logoBg, comp.ticker)}
+                              className="h-11 w-11 rounded-full flex items-center justify-center text-white font-extrabold text-xs shadow-xs mb-1.5 group-hover:scale-105 transition-transform ring-2 ring-slate-200/90 dark:ring-zinc-800 shrink-0"
+                            >
+                              {comp.logoText || comp.ticker.substring(0, 2)}
+                            </div>
+                            <span className="font-bold text-slate-900 dark:text-zinc-200 text-[11px] sm:text-xs truncate w-full group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">
+                              {comp.shortName}
+                            </span>
+                            <span className="text-[11px] sm:text-xs font-extrabold text-rose-600 dark:text-rose-400 mt-0.5">
+                              {delta}
+                            </span>
+                            <span className="text-[10px] font-semibold text-rose-700/90 dark:text-rose-400/80">
+                              {comp.change} MCap
+                            </span>
+                          </button>
+                        )
+                      })}
                     </div>
+
+                    <CategoryExplanationBox
+                      color="rose"
+                      lines={[
+                        "Monitors corporate entities exhibiting the highest percentage contraction in valuation today.",
+                        "Often reflects institutional profit-taking, equity dilution adjustments, or sector-wide pullbacks.",
+                        "Quantified by secondary trade execution prints below previous clearing settlement prices.",
+                        "Provides critical risk transparency for portfolio hedging and opportunistic dip allocations.",
+                      ]}
+                    />
                   </div>
-                  <span className="text-[11px] font-bold text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                    +$3.79M Today
-                  </span>
-                </div>
 
-                <div className="space-y-2.5">
-                  {mostInvestedCompanies.map((comp) => (
-                    <div
-                      key={comp.id}
-                      className="p-3 rounded-xl border border-slate-200/80 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40 hover:border-slate-300 dark:hover:border-zinc-700 transition-all space-y-2 text-xs"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="h-5 w-5 rounded-full bg-slate-200 dark:bg-zinc-800 text-[10px] font-extrabold flex items-center justify-center text-slate-700 dark:text-zinc-300">
-                            #{comp.rank}
-                          </span>
-                          <div>
-                            <span className="font-bold text-slate-900 dark:text-white">{comp.name}</span>
-                            <span className="text-[11px] text-slate-500 dark:text-zinc-400 ml-2">({comp.sector})</span>
-                          </div>
+                  {/* Column 3: Todays Most Active */}
+                  <div className="p-3.5 sm:p-4 space-y-3 bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 rounded-2xl shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="h-6 w-6 rounded-md bg-cyan-500/10 flex items-center justify-center">
+                          <Activity className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400" />
                         </div>
-                        <span className="font-extrabold text-[#00d09c]">{comp.investedToday}</span>
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] text-slate-500 dark:text-zinc-400">
-                          <span>Funded: {comp.percentFunded}% of {comp.target}</span>
-                          <span className="text-emerald-500 font-semibold">{comp.change} 24h</span>
-                        </div>
-                        <div className="w-full bg-slate-200 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
-                          <div
-                            className="bg-[#00d09c] h-full rounded-full transition-all"
-                            style={{ width: `${comp.percentFunded}%` }}
-                          />
+                        <div>
+                          <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">Todays Most Active</h3>
                         </div>
                       </div>
+                      <span className="text-[10px] font-bold text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/20 px-2 py-0.5 rounded-full">
+                        $14.5M Vol
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </div>
 
-              {/* Column 2: Todays least invested companies */}
-              <div className="p-4 sm:p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="h-7 w-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-                      <Flame className="h-4 w-4 text-amber-500" />
+                    <div className="grid grid-cols-5 gap-1.5 sm:gap-3 py-1">
+                      {liveMostActive.map((comp) => {
+                        const delta = (comp as any).metricValue || comp.volume || "$14.5M Vol"
+                        return (
+                          <button
+                            key={comp.id}
+                            type="button"
+                            onClick={() => {
+                              const profile = allCompanies.find((c) => c.ticker === comp.ticker) || (allCompanies[0] || null)
+                              setSelectedCompanyProfile(profile)
+                            }}
+                            className="flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-xl hover:bg-slate-100/80 dark:hover:bg-zinc-800/60 border border-transparent hover:border-slate-200/80 dark:hover:border-zinc-700/50 transition-all text-center group cursor-pointer w-full min-w-0 min-h-[120px]"
+                          >
+                            <div
+                              style={getCompanyLogoStyle(comp.logoBg, comp.ticker)}
+                              className="h-11 w-11 rounded-full flex items-center justify-center text-white font-extrabold text-xs shadow-xs mb-1.5 group-hover:scale-105 transition-transform ring-2 ring-slate-200/90 dark:ring-zinc-800 shrink-0"
+                            >
+                              {comp.logoText || comp.ticker.substring(0, 2)}
+                            </div>
+                            <span className="font-bold text-slate-900 dark:text-zinc-200 text-[11px] sm:text-xs truncate w-full group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">
+                              {comp.shortName}
+                            </span>
+                            <span className="text-[11px] sm:text-xs font-extrabold text-cyan-600 dark:text-cyan-400 mt-0.5">
+                              {comp.volume || delta}
+                            </span>
+                            <span className="text-[10px] font-semibold text-cyan-700/90 dark:text-cyan-400/80">
+                              {comp.change ? `${comp.change} Today` : "High Vol"}
+                            </span>
+                          </button>
+                        )
+                      })}
                     </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">Todays Least Invested Companies</h3>
-                      <p className="text-[11px] text-slate-500 dark:text-zinc-400">Early round allocations & hidden value opportunities</p>
-                    </div>
+
+                    <CategoryExplanationBox
+                      color="cyan"
+                      lines={[
+                        "Ranks operating issuers by total cumulative secondary trading volume and share exchange velocity.",
+                        "Combines number of executed institutional transactions and aggregate dollar turnover today.",
+                        "Signifies maximum marketplace liquidity, tight bid-ask spreads, and minimal transaction slippage.",
+                        "Essential for large institutional investors managing multi-million dollar equity blocks.",
+                      ]}
+                    />
                   </div>
-                  <span className="text-[11px] font-bold text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
-                    Early Stage
-                  </span>
+
+                  {/* Column 4: Todays 52W Highs */}
+                  <div className="p-3.5 sm:p-4 space-y-3 bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 rounded-2xl shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="h-6 w-6 rounded-md bg-purple-500/10 flex items-center justify-center">
+                          <Sparkles className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+                        </div>
+                        <div>
+                          <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">Todays 52W Highs</h3>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 px-2 py-0.5 rounded-full">
+                        52W Peak
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-5 gap-1.5 sm:gap-3 py-1">
+                      {liveNewHighs.map((comp) => {
+                        const delta = (comp as any).metricValue || (comp as any).valuation || "$85M MCap"
+                        return (
+                          <button
+                            key={comp.id}
+                            type="button"
+                            onClick={() => {
+                              const profile = allCompanies.find((c) => c.ticker === comp.ticker) || (allCompanies[0] || null)
+                              setSelectedCompanyProfile(profile)
+                            }}
+                            className="flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-xl hover:bg-slate-100/80 dark:hover:bg-zinc-800/60 border border-transparent hover:border-slate-200/80 dark:hover:border-zinc-700/50 transition-all text-center group cursor-pointer w-full min-w-0 min-h-[120px]"
+                          >
+                            <div
+                              style={getCompanyLogoStyle(comp.logoBg, comp.ticker)}
+                              className="h-11 w-11 rounded-full flex items-center justify-center text-white font-extrabold text-xs shadow-xs mb-1.5 group-hover:scale-105 transition-transform ring-2 ring-slate-200/90 dark:ring-zinc-800 shrink-0"
+                            >
+                              {comp.logoText || comp.ticker.substring(0, 2)}
+                            </div>
+                            <span className="font-bold text-slate-900 dark:text-zinc-200 text-[11px] sm:text-xs truncate w-full group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                              {comp.shortName}
+                            </span>
+                            <span className="text-[11px] sm:text-xs font-extrabold text-purple-600 dark:text-purple-400 mt-0.5">
+                              {comp.change}
+                            </span>
+                            <span className="text-[10px] font-semibold text-purple-700/90 dark:text-purple-400/80">
+                              {delta.replace(/^(\+|-)/, "")}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    <CategoryExplanationBox
+                      color="purple"
+                      lines={[
+                        "Showcases corporate issuers whose valuations have traded at or above their 52-week peak.",
+                        "Denotes sustained operational milestones, recurring revenue records, and balance sheet growth.",
+                        "Verified against audited financial statements and historical Delaware corporate filings over 12 months.",
+                        "Highlights top-tier institutional market leaders establishing new valuation records.",
+                      ]}
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-2.5">
-                  {leastInvestedCompanies.map((comp) => (
-                    <div
-                      key={comp.id}
-                      className="p-3 rounded-xl border border-slate-200/80 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40 hover:border-slate-300 dark:hover:border-zinc-700 transition-all space-y-2 text-xs"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="h-5 w-5 rounded-full bg-slate-200 dark:bg-zinc-800 text-[10px] font-extrabold flex items-center justify-center text-slate-700 dark:text-zinc-300">
-                            #{comp.rank}
-                          </span>
-                          <div>
-                            <span className="font-bold text-slate-900 dark:text-white">{comp.name}</span>
-                            <span className="text-[11px] text-slate-500 dark:text-zinc-400 ml-2">({comp.sector})</span>
-                          </div>
-                        </div>
-                        <span className="font-bold text-slate-900 dark:text-white">{comp.raised}</span>
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] text-slate-500 dark:text-zinc-400">
-                          <span>Progress: {comp.percentFunded}% of {comp.target}</span>
-                          <span className="text-amber-500 font-semibold">{comp.daysLeft} days left</span>
-                        </div>
-                        <div className="w-full bg-slate-200 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
-                          <div
-                            className="bg-amber-500 h-full rounded-full transition-all"
-                            style={{ width: `${comp.percentFunded}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                {/* Show Less Categories Button */}
+                <div className="flex justify-center pt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={handleToggleViewAll}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-slate-700 dark:text-zinc-200 transition-colors cursor-pointer border border-slate-200/80 dark:border-zinc-700/60 shadow-2xs"
+                  >
+                    <span>Show Less Categories</span>
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* ROW 4: Screener | Tools (Two 50-50 Columns) */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-zinc-800">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
               {/* Column 1: Screener */}
-              <div className="p-4 sm:p-6 space-y-4">
+              <div className="p-4 sm:p-6 space-y-4 bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 rounded-2xl shadow-xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="h-7 w-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                    <div className="h-7 w-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
                       <SlidersHorizontal className="h-4 w-4 text-blue-500" />
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-slate-900 dark:text-white">Screener</h3>
-                      <p className="text-[11px] text-slate-500 dark:text-zinc-400">Filter ventures by sector, stage, and valuation</p>
+                      <p className="text-[11px] text-slate-500 dark:text-zinc-400">Filter operating companies by sector, trading status, and valuation</p>
                     </div>
                   </div>
                   <button
                     onClick={() => {
                       setScreenerSector("All")
-                      setScreenerStage("All")
+                      setScreenerTier("All")
                       setScreenerValuation("All")
                     }}
-                    className="text-[11px] font-semibold text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer"
+                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer"
                   >
                     Reset Filters
                   </button>
@@ -1074,8 +1378,8 @@ export default function ExplorePage() {
                           onClick={() => setScreenerSector(sec)}
                           className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
                             screenerSector === sec
-                              ? "bg-slate-900 text-white dark:bg-white dark:text-zinc-950 border-slate-900 dark:border-white font-bold"
-                              : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:border-slate-300 dark:hover:border-zinc-700"
+                              ? "bg-slate-900 text-white dark:bg-white dark:text-zinc-950 font-bold shadow-2xs border-transparent"
+                              : "bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-800 dark:hover:text-white border-slate-200/60 dark:border-zinc-800"
                           }`}
                         >
                           {sec}
@@ -1086,20 +1390,20 @@ export default function ExplorePage() {
 
                   <div>
                     <label className="block font-semibold text-slate-700 dark:text-zinc-300 mb-1.5">
-                      Funding Stage
+                      Operating Status / Tier
                     </label>
                     <div className="flex flex-wrap gap-1.5">
-                      {["All", "Pre-Seed", "Seed", "Series A", "Series B+"].map((stg) => (
+                      {["All", "Active Trading", "Operating - Private", "Tier-1 Institutional", "Tier-2 Growth"].map((tier) => (
                         <button
-                          key={stg}
-                          onClick={() => setScreenerStage(stg)}
+                          key={tier}
+                          onClick={() => setScreenerTier(tier)}
                           className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
-                            screenerStage === stg
-                              ? "bg-slate-900 text-white dark:bg-white dark:text-zinc-950 border-slate-900 dark:border-white font-bold"
-                              : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:border-slate-300 dark:hover:border-zinc-700"
+                            screenerTier === tier
+                              ? "bg-slate-900 text-white dark:bg-white dark:text-zinc-950 font-bold shadow-2xs border-transparent"
+                              : "bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-800 dark:hover:text-white border-slate-200/60 dark:border-zinc-800"
                           }`}
                         >
-                          {stg}
+                          {tier}
                         </button>
                       ))}
                     </div>
@@ -1110,14 +1414,14 @@ export default function ExplorePage() {
                       Valuation Range
                     </label>
                     <div className="flex flex-wrap gap-1.5">
-                      {["All", "< $10M", "$10M - $50M", "$50M+"].map((val) => (
+                      {["All", "< $20M", "$20M - $50M", "$50M+"].map((val) => (
                         <button
                           key={val}
                           onClick={() => setScreenerValuation(val)}
                           className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
                             screenerValuation === val
-                              ? "bg-slate-900 text-white dark:bg-white dark:text-zinc-950 border-slate-900 dark:border-white font-bold"
-                              : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:border-slate-300 dark:hover:border-zinc-700"
+                              ? "bg-slate-900 text-white dark:bg-white dark:text-zinc-950 font-bold shadow-2xs border-transparent"
+                              : "bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-800 dark:hover:text-white border-slate-200/60 dark:border-zinc-800"
                           }`}
                         >
                           {val}
@@ -1128,20 +1432,23 @@ export default function ExplorePage() {
 
                   <div className="pt-2 flex items-center justify-between">
                     <span className="text-[11px] text-slate-500 dark:text-zinc-400">
-                      Matches: <strong className="text-slate-900 dark:text-white">24 verified deals</strong>
+                      Matches: <strong className="text-slate-900 dark:text-white">25 verified companies</strong>
                     </span>
-                    <button className="px-4 py-2 rounded-xl bg-[#00d09c] text-black font-bold text-xs hover:bg-[#00b888] transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs">
+                    <Link
+                      to="/explore?tab=index"
+                      className="px-4 py-2 rounded-xl bg-[#00d09c] text-black font-bold text-xs hover:bg-[#00b888] transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    >
                       Apply Screener <ArrowRight className="h-3.5 w-3.5" />
-                    </button>
+                    </Link>
                   </div>
                 </div>
               </div>
 
               {/* Column 2: Tools */}
-              <div className="p-4 sm:p-6 space-y-4">
+              <div className="p-4 sm:p-6 space-y-4 bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 rounded-2xl shadow-xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="h-7 w-7 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
+                    <div className="h-7 w-7 rounded-lg bg-purple-500/10 flex items-center justify-center">
                       <Calculator className="h-4 w-4 text-purple-500" />
                     </div>
                     <div>
@@ -1149,7 +1456,7 @@ export default function ExplorePage() {
                       <p className="text-[11px] text-slate-500 dark:text-zinc-400">Financial models, valuation engines & diligence tools</p>
                     </div>
                   </div>
-                  <span className="text-[11px] text-slate-400 font-medium">4 Interactive Utilities</span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">4 Interactive Utilities</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
@@ -1158,13 +1465,13 @@ export default function ExplorePage() {
                     return (
                       <div
                         key={tool.id}
-                        className="p-3.5 rounded-xl border border-slate-200/80 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40 hover:border-[#00d09c]/40 hover:bg-white dark:hover:bg-zinc-900/80 transition-all cursor-pointer group flex flex-col justify-between space-y-2"
+                        className="p-3.5 rounded-xl bg-slate-50/90 dark:bg-zinc-800/50 border border-slate-200/80 dark:border-zinc-700/50 hover:bg-slate-100/80 dark:hover:bg-zinc-800 shadow-2xs hover:shadow-xs transition-all cursor-pointer group flex flex-col justify-between space-y-2"
                       >
                         <div className="flex items-center justify-between">
-                          <div className="h-8 w-8 rounded-lg bg-slate-200/60 dark:bg-zinc-800 flex items-center justify-center text-slate-800 dark:text-white group-hover:bg-[#00d09c]/15 group-hover:text-[#00d09c] transition-colors">
+                          <div className="h-8 w-8 rounded-lg bg-slate-200/80 dark:bg-zinc-800 flex items-center justify-center text-slate-800 dark:text-white group-hover:bg-[#00d09c]/15 group-hover:text-[#00d09c] transition-colors">
                             <IconComponent className="h-4 w-4" />
                           </div>
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200/80 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
                             {tool.badge}
                           </span>
                         </div>
@@ -1173,7 +1480,7 @@ export default function ExplorePage() {
                             {tool.name}
                             <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                           </h4>
-                          <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1 line-clamp-2 leading-relaxed">
+                          <p className="text-[11px] text-slate-600 dark:text-zinc-400 mt-1 line-clamp-2 leading-relaxed">
                             {tool.desc}
                           </p>
                         </div>
@@ -1185,7 +1492,7 @@ export default function ExplorePage() {
             </div>
 
             {/* ROW 5: Recently added companies (Full Width) */}
-            <div className="p-4 sm:p-6 space-y-4">
+            <div className="p-4 sm:p-6 space-y-4 bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 rounded-2xl shadow-xs">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1193,38 +1500,56 @@ export default function ExplorePage() {
                     Recently Added Companies
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-                    New ventures and enterprise issuers freshly registered on White Quantex
+                    Newly registered and verified operating companies on White Quantex
                   </p>
                 </div>
-                <Link
-                  to="/ventures"
-                  className="text-xs font-semibold text-[#00d09c] hover:underline flex items-center gap-1"
-                >
-                  Browse All Ventures <ChevronRight className="h-3.5 w-3.5" />
-                </Link>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAllRecentlyAdded(!showAllRecentlyAdded)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 transition-colors cursor-pointer border border-slate-200/80 dark:border-zinc-700/60 shadow-2xs"
+                  >
+                    <span>{showAllRecentlyAdded ? "Show Less" : "View All"}</span>
+                    {showAllRecentlyAdded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                  <Link
+                    to="/explore?tab=index"
+                    className="text-xs font-semibold text-emerald-600 dark:text-[#00d09c] hover:underline flex items-center gap-1"
+                  >
+                    Master Index <ChevronRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {recentlyAddedCompanies.map((comp) => (
+                {(showAllRecentlyAdded ? liveRecentlyAdded : liveRecentlyAdded.slice(0, 3)).map((comp) => (
                   <div
                     key={comp.id}
-                    className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40 hover:border-slate-300 dark:hover:border-zinc-700 transition-all flex flex-col justify-between space-y-3"
+                    className="p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-zinc-800/80 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between space-y-3"
                   >
                     <div>
                       <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <h4 className="font-bold text-slate-900 dark:text-white text-sm">{comp.name}</h4>
-                            <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-[#00d09c]/10 text-[#00a87e] dark:text-[#00d09c] border border-[#00d09c]/20">
-                              {comp.verification}
+                        <div className="flex items-start gap-2.5">
+                          <div
+                            style={getCompanyLogoStyle(comp.logoColor, comp.ticker)}
+                            className="h-9 w-9 rounded-lg flex items-center justify-center text-white font-extrabold text-xs shadow-xs shrink-0 ring-1 ring-slate-200/80 dark:ring-zinc-800"
+                          >
+                            {comp.ticker.substring(0, 2)}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="font-bold text-slate-900 dark:text-white text-sm">{comp.name}</h4>
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-[#00d09c]/10 text-[#00a87e] dark:text-[#00d09c]">
+                                {comp.verification}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-slate-500 dark:text-zinc-400">
+                              {comp.sector} · {comp.location} · Est. {comp.founded}
                             </span>
                           </div>
-                          <span className="text-[11px] text-slate-500 dark:text-zinc-400">
-                            {comp.sector} · {comp.location} · Est. {comp.founded}
-                          </span>
                         </div>
-                        <span className="badge-accent text-[10px] font-bold px-2 py-0.5 rounded-full">
-                          {comp.stage}
+                        <span className="badge-accent text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0">
+                          {comp.status}
                         </span>
                       </div>
 
@@ -1233,25 +1558,397 @@ export default function ExplorePage() {
                       </p>
                     </div>
 
-                    <div className="pt-3 border-t border-slate-200/70 dark:border-zinc-800 flex items-center justify-between text-xs">
+                    <div className="pt-3 flex items-center justify-between text-xs border-t border-slate-200/60 dark:border-zinc-800/60">
                       <div>
-                        <span className="text-[10px] text-slate-400 block">Seeking Target</span>
-                        <span className="font-extrabold text-slate-900 dark:text-white">{comp.seeking}</span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Annual Revenue</span>
+                        <span className="font-extrabold text-slate-900 dark:text-white">{comp.annualRevenue}</span>
                       </div>
                       <div className="text-right">
-                        <span className="text-[10px] text-slate-400 block">Trust Score</span>
-                        <span className="font-extrabold text-[#00d09c]">{comp.trustScore}/100</span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Trust Score</span>
+                        <span className="font-extrabold text-emerald-600 dark:text-[#00d09c]">{comp.trustScore}/100</span>
                       </div>
-                      <Link
-                        to="/ventures"
-                        className="px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-zinc-950 font-bold text-xs hover:bg-slate-800 dark:hover:bg-zinc-200 transition-colors"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const profile = allCompanies.find((c) => c.ticker === comp.ticker || c.id === comp.id) || (allCompanies[0] || null)
+                          setSelectedCompanyProfile(profile)
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-zinc-950 font-bold text-xs hover:bg-slate-800 dark:hover:bg-zinc-200 transition-colors cursor-pointer"
                       >
-                        View
-                      </Link>
+                        View Dossier
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
+
+              {showAllRecentlyAdded && liveRecentlyAdded.length > 3 && (
+                <div className="flex justify-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAllRecentlyAdded(false)}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 transition-colors cursor-pointer border border-slate-200/80 dark:border-zinc-700/60 shadow-2xs"
+                  >
+                    <span>Show Less Recently Added</span>
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ROW 6: Upcoming Companies (5-Column Grid, View All Expandable) */}
+            <div className="p-4 sm:p-6 space-y-4 bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 rounded-2xl shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+                    <Calendar className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      Upcoming Companies
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                        Pre-Listing Pipeline
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+                      Early-stage Delaware entities and private issuers preparing for secondary listing on White Quantex
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAllUpcoming(!showAllUpcoming)}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 transition-colors cursor-pointer border border-slate-200/80 dark:border-zinc-700/60 shadow-2xs shrink-0"
+                >
+                  <span>{showAllUpcoming ? "Show Less" : "View All Upcoming (+5)"}</span>
+                  {showAllUpcoming ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+                {(showAllUpcoming ? liveUpcoming : liveUpcoming.slice(0, 5)).map((comp) => (
+                  <div
+                    key={comp.id}
+                    className="p-3.5 sm:p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-zinc-800/80 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between space-y-3 group"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-1.5 mb-2">
+                        <div
+                          style={getCompanyLogoStyle(comp.logoBg, comp.ticker)}
+                          className="h-9 w-9 rounded-full flex items-center justify-center text-white font-extrabold text-xs shadow-xs shrink-0 ring-2 ring-slate-200/90 dark:ring-zinc-800"
+                        >
+                          {comp.ticker.substring(0, 2)}
+                        </div>
+                        <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20 shrink-0">
+                          {comp.readiness}
+                        </span>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <h4 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                          {comp.name}
+                        </h4>
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-zinc-400">
+                          <span className="font-mono font-bold text-slate-700 dark:text-zinc-300">{comp.ticker}</span>
+                          <span>·</span>
+                          <span>{comp.sector}</span>
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-slate-600 dark:text-zinc-400 mt-2 line-clamp-2 leading-relaxed">
+                        {comp.description}
+                      </p>
+                    </div>
+
+                    <div className="pt-2.5 border-t border-slate-200/60 dark:border-zinc-800/60 space-y-2 text-xs">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500 dark:text-slate-400">Target Val</span>
+                        <span className="font-extrabold font-mono text-slate-900 dark:text-white">{comp.targetValuation}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-500 dark:text-slate-400">Timing</span>
+                        <span className="font-bold text-blue-600 dark:text-blue-400">{comp.expectedDate}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-500 dark:text-slate-400">Trust Score</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400">{comp.trustScore}/100</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const profile = allCompanies.find((c) => c.ticker === comp.ticker) || {
+                            id: comp.id,
+                            name: comp.name,
+                            ticker: comp.ticker,
+                            legalEntity: comp.legalEntity,
+                            cik: `CIK-000${Math.floor(1800000 + Math.random() * 200000)}`,
+                            verification: comp.readiness,
+                            valuation: comp.targetValuation,
+                            annualRevenue: "$8.5M ARR Est.",
+                            employees: 35,
+                            trustScore: comp.trustScore,
+                            description: comp.description,
+                            ceo: comp.ceo,
+                            exchangeTier: "Pre-Listing Pipeline",
+                            sector: comp.sector,
+                            logoBg: comp.logoBg,
+                          }
+                          setSelectedCompanyProfile(profile)
+                        }}
+                        className="w-full mt-1 py-1.5 rounded-lg text-center text-[11px] font-bold bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 text-white transition-colors cursor-pointer"
+                      >
+                        Pre-Listing Dossier
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {showAllUpcoming && (
+                <div className="flex justify-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAllUpcoming(false)}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 transition-colors cursor-pointer border border-slate-200/80 dark:border-zinc-700/60 shadow-2xs"
+                  >
+                    <span>Show Less Upcoming</span>
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ROW 7: WQ Recommendation Companies (5-Column Grid, View All Expandable) */}
+            <div className="p-4 sm:p-6 space-y-4 bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 rounded-2xl shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                    <Award className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      WQ Recommendation Companies
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        Quant Rated
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+                      Curated high-conviction picks backed by algorithmic DCF valuation, balance sheet health, and momentum
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAllRecommendations(!showAllRecommendations)}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 transition-colors cursor-pointer border border-slate-200/80 dark:border-zinc-700/60 shadow-2xs shrink-0"
+                >
+                  <span>{showAllRecommendations ? "Show Less" : "View All Recommendations (+5)"}</span>
+                  {showAllRecommendations ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+                {(showAllRecommendations ? liveRecommendations : liveRecommendations.slice(0, 5)).map((rec) => {
+                  const badgeColor = {
+                    "Strong Buy": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20",
+                    "Top Pick": "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20",
+                    "High Conviction": "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/20",
+                    "Growth Outperformer": "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20",
+                    "Value Buy": "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20",
+                  }[rec.rating]
+
+                  return (
+                    <div
+                      key={rec.id}
+                      className="p-3.5 sm:p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-zinc-800/80 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between space-y-3 group"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-1.5 mb-2">
+                          <div
+                            style={getCompanyLogoStyle(rec.logoBg, rec.ticker)}
+                            className="h-9 w-9 rounded-full flex items-center justify-center text-white font-extrabold text-xs shadow-xs shrink-0 ring-2 ring-slate-200/90 dark:ring-zinc-800"
+                          >
+                            {rec.ticker.substring(0, 2)}
+                          </div>
+                          <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${badgeColor}`}>
+                            {rec.rating}
+                          </span>
+                        </div>
+
+                        <div className="space-y-0.5">
+                          <h4 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate group-hover:text-emerald-600 dark:group-hover:text-[#00d09c] transition-colors">
+                            {rec.shortName}
+                          </h4>
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-zinc-400">
+                            <span className="font-mono font-bold text-slate-700 dark:text-zinc-300">{rec.ticker}</span>
+                            <span>·</span>
+                            <span>{rec.sector}</span>
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-slate-600 dark:text-zinc-400 mt-2 line-clamp-2 leading-relaxed">
+                          {rec.thesis}
+                        </p>
+                      </div>
+
+                      <div className="pt-2.5 border-t border-slate-200/60 dark:border-zinc-800/60 space-y-2 text-xs">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-500 dark:text-slate-400">Target Upside</span>
+                          <span className="font-extrabold text-emerald-600 dark:text-[#00d09c]">{rec.upside}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-slate-500 dark:text-slate-400">Val / ARR</span>
+                          <span className="font-bold font-mono text-slate-800 dark:text-zinc-200">{rec.valuation} · {rec.annualRevenue}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-slate-500 dark:text-slate-400">Quant Score</span>
+                          <span className="font-extrabold text-emerald-600 dark:text-emerald-400">{rec.quantScore}/100</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const profile = allCompanies.find((c) => c.ticker === rec.ticker) || {
+                              id: rec.id,
+                              name: rec.name,
+                              ticker: rec.ticker,
+                              legalEntity: rec.legalEntity,
+                              cik: rec.cik,
+                              verification: "PLATINUM",
+                              valuation: rec.valuation,
+                              annualRevenue: rec.annualRevenue,
+                              employees: 85,
+                              trustScore: rec.quantScore,
+                              description: rec.thesis,
+                              ceo: rec.ceo,
+                              exchangeTier: "Tier-1 Institutional",
+                              sector: rec.sector,
+                              logoBg: rec.logoBg,
+                            }
+                            setSelectedCompanyProfile(profile)
+                          }}
+                          className="w-full mt-1 py-1.5 rounded-lg text-center text-[11px] font-bold bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 text-white transition-colors cursor-pointer"
+                        >
+                          Analytical Dossier
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {showAllRecommendations && (
+                <div className="flex justify-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAllRecommendations(false)}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 transition-colors cursor-pointer border border-slate-200/80 dark:border-zinc-700/60 shadow-2xs"
+                  >
+                    <span>Show Less Recommendations</span>
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ROW 8: Mutual Investment Schemes (5-Column Grid, View All Expandable) */}
+            <div className="p-4 sm:p-6 space-y-4 bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/60 rounded-2xl shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-600 dark:text-purple-400 shrink-0">
+                    <PieChart className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      Mutual Investment Schemes
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                        Pooled Baskets
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+                      Diversified corporate pooled schemes, sector index vehicles, and algorithmic secondary baskets
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAllSchemes(!showAllSchemes)}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 transition-colors cursor-pointer border border-slate-200/80 dark:border-zinc-700/60 shadow-2xs shrink-0"
+                >
+                  <span>{showAllSchemes ? "Show Less" : "View All Schemes (+5)"}</span>
+                  {showAllSchemes ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+                {(showAllSchemes ? liveSchemes : liveSchemes.slice(0, 5)).map((scheme) => (
+                  <div
+                    key={scheme.id}
+                    className="p-3.5 sm:p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-zinc-800/80 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between space-y-3 group"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-1.5 mb-2">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-extrabold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                          {scheme.code}
+                        </span>
+                        <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 shrink-0">
+                          {scheme.strategy}
+                        </span>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <h4 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm line-clamp-1 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                          {scheme.name}
+                        </h4>
+                        <div className="text-[10px] text-slate-500 dark:text-zinc-400 truncate">
+                          {scheme.manager}
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-slate-600 dark:text-zinc-400 mt-2 line-clamp-2 leading-relaxed">
+                        {scheme.description}
+                      </p>
+                    </div>
+
+                    <div className="pt-2.5 border-t border-slate-200/60 dark:border-zinc-800/60 space-y-2 text-xs">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500 dark:text-slate-400">NAV</span>
+                        <span className="font-extrabold font-mono text-slate-900 dark:text-white">{scheme.nav}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-500 dark:text-slate-400">1Y Return</span>
+                        <span className="font-extrabold text-emerald-600 dark:text-[#00d09c]">{scheme.oneYearReturn}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-500 dark:text-slate-400">Min Check</span>
+                        <span className="font-bold text-indigo-600 dark:text-indigo-400">{scheme.minInvestment}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSchemeDetail(scheme)}
+                        className="w-full mt-1 py-1.5 rounded-lg text-center text-[11px] font-bold bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 text-white transition-colors cursor-pointer"
+                      >
+                        Scheme Factsheet
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {showAllSchemes && (
+                <div className="flex justify-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAllSchemes(false)}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 transition-colors cursor-pointer border border-slate-200/80 dark:border-zinc-700/60 shadow-2xs"
+                  >
+                    <span>Show Less Schemes</span>
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -1261,22 +1958,34 @@ export default function ExplorePage() {
           <div className="p-4 sm:p-6 space-y-6">
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40">
+              <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 shadow-2xs">
                 <span className="text-xs text-slate-500 dark:text-zinc-400 block">Total Portfolio Value</span>
-                <p className="text-2xl font-black text-[#00d09c] mt-1">$62,400.00</p>
-                <span className="text-[11px] text-emerald-500 font-bold">+38.6% All-time Gain</span>
+                <p className={`text-2xl font-black mt-1 ${portfolioValue > 0 ? "text-[#00d09c]" : "text-slate-400 dark:text-zinc-500"}`}>
+                  ${portfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                {totalReturnPercent !== 0 ? (
+                  <span className={`text-[11px] font-bold ${totalReturnPercent >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                    {totalReturnPercent >= 0 ? "+" : ""}{totalReturnPercent.toFixed(1)}% All-time {totalReturnPercent >= 0 ? "Gain" : "Loss"}
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-slate-400 dark:text-zinc-500">No active positions</span>
+                )}
               </div>
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40">
+              <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 shadow-2xs">
                 <span className="text-xs text-slate-500 dark:text-zinc-400 block">Invested Capital</span>
-                <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">$45,000.00</p>
-                <span className="text-[11px] text-slate-500 dark:text-zinc-400">3 Active Venture Deals</span>
+                <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+                  ${totalInvested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <span className="text-[11px] text-slate-500 dark:text-zinc-400">{livePositions.length} Verified Company Holdings</span>
               </div>
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40">
+              <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 shadow-2xs">
                 <span className="text-xs text-slate-500 dark:text-zinc-400 block">Unrealized Gain</span>
-                <p className="text-2xl font-black text-emerald-500 mt-1">+$17,400.00</p>
+                <p className={`text-2xl font-black mt-1 ${unrealizedGain >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                  {unrealizedGain >= 0 ? "+" : ""}${Math.abs(unrealizedGain).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
                 <span className="text-[11px] text-slate-500 dark:text-zinc-400">Audit-verified balance</span>
               </div>
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40">
+              <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 shadow-2xs">
                 <span className="text-xs text-slate-500 dark:text-zinc-400 block">Compliance Trust Rating</span>
                 <p className="text-2xl font-black text-amber-400 mt-1">92 / 100</p>
                 <span className="text-[11px] text-amber-500 font-bold">Gold Accredited Tier</span>
@@ -1284,8 +1993,8 @@ export default function ExplorePage() {
             </div>
 
             {/* Active Positions Table */}
-            <div className="border border-slate-200 dark:border-zinc-800 rounded-xl overflow-hidden bg-white dark:bg-zinc-900/60 shadow-xs">
-              <div className="p-4 border-b border-slate-100 dark:border-zinc-800/80 flex items-center justify-between">
+            <div className="rounded-xl overflow-hidden bg-slate-50/50 dark:bg-zinc-900/40 shadow-xs">
+              <div className="p-4 border-b border-slate-200/40 dark:border-zinc-800/40 flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     <Briefcase className="h-4 w-4 text-[#00d09c]" />
@@ -1305,9 +2014,9 @@ export default function ExplorePage() {
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 dark:bg-zinc-900/90 text-slate-500 dark:text-zinc-400 uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-zinc-800">
+                  <thead className="bg-slate-50 dark:bg-zinc-900/90 text-slate-500 dark:text-zinc-400 uppercase text-[10px] tracking-wider border-b border-slate-200/40 dark:border-zinc-800/40">
                     <tr>
-                      <th className="py-3 px-4">Venture Name</th>
+                      <th className="py-3 px-4">Company Name</th>
                       <th className="py-3 px-3">Industry</th>
                       <th className="py-3 px-3">Equity %</th>
                       <th className="py-3 px-3">Shares</th>
@@ -1319,120 +2028,107 @@ export default function ExplorePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/80">
-                    {[
-                      {
-                        name: "TechFlow AI Solutions",
-                        ticker: "TFLOW",
-                        ind: "AI & Distributed Cloud",
-                        eq: "0.85%",
-                        shares: "8,500",
-                        inv: "$25,000",
-                        val: "$38,500",
-                        ret: "+54.0%",
-                        isPositive: true,
-                        st: "Active",
-                      },
-                      {
-                        name: "GreenLeaf Energy",
-                        ticker: "GGRID",
-                        ind: "CleanTech & Solar",
-                        eq: "0.40%",
-                        shares: "4,000",
-                        inv: "$10,000",
-                        val: "$12,400",
-                        ret: "+24.0%",
-                        isPositive: true,
-                        st: "Active",
-                      },
-                      {
-                        name: "Quantum Materials Corp",
-                        ticker: "QMAT",
-                        ind: "DeepTech Nano",
-                        eq: "0.25%",
-                        shares: "2,500",
-                        inv: "$10,000",
-                        val: "$11,500",
-                        ret: "+15.0%",
-                        isPositive: true,
-                        st: "Active",
-                      },
-                    ].map((pos) => (
-                      <tr key={pos.name} className="hover:bg-slate-50/80 dark:hover:bg-zinc-800/40 transition-colors">
-                        <td className="py-3.5 px-4">
-                          <span className="font-bold text-slate-900 dark:text-white block">{pos.name}</span>
-                          <span className="text-[10px] text-slate-400 font-mono">{pos.ticker}</span>
-                        </td>
-                        <td className="py-3.5 px-3 text-slate-600 dark:text-zinc-300">{pos.ind}</td>
-                        <td className="py-3.5 px-3 font-semibold text-slate-900 dark:text-white">{pos.eq}</td>
-                        <td className="py-3.5 px-3 text-slate-500 dark:text-zinc-400 font-mono">{pos.shares}</td>
-                        <td className="py-3.5 px-3 text-slate-700 dark:text-zinc-300 font-semibold">{pos.inv}</td>
-                        <td className="py-3.5 px-3 font-extrabold text-slate-900 dark:text-white">{pos.val}</td>
-                        <td className="py-3.5 px-3 font-bold text-emerald-500">{pos.ret}</td>
-                        <td className="py-3.5 px-3">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                            {pos.st}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <Link
-                            to="/ventures"
-                            className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-white font-bold text-[11px] transition-colors"
-                          >
-                            Details
-                          </Link>
+                    {livePositions.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-10 text-center text-slate-500 dark:text-zinc-400">
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <Briefcase className="h-7 w-7 text-slate-400 dark:text-zinc-600 mb-0.5" />
+                            <p className="font-bold text-xs text-slate-700 dark:text-zinc-300">No active equity holdings</p>
+                            <p className="text-[11px] text-slate-500 dark:text-zinc-500 max-w-sm">
+                              Your portfolio is currently empty. Explore pre-IPO placements and secondary markets in the Master Index to take your first corporate position.
+                            </p>
+                          </div>
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      livePositions.map((pos) => (
+                        <tr key={pos.name} className="hover:bg-slate-50/80 dark:hover:bg-zinc-800/40 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <span className="font-bold text-slate-900 dark:text-white block">{pos.name}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">{pos.ticker}</span>
+                          </td>
+                          <td className="py-3.5 px-3 text-slate-600 dark:text-zinc-300">{pos.ind}</td>
+                          <td className="py-3.5 px-3 font-semibold text-slate-900 dark:text-white">{pos.eq}</td>
+                          <td className="py-3.5 px-3 text-slate-500 dark:text-zinc-400 font-mono">{pos.shares}</td>
+                          <td className="py-3.5 px-3 text-slate-700 dark:text-zinc-300 font-semibold">{pos.inv}</td>
+                          <td className="py-3.5 px-3 font-extrabold text-slate-900 dark:text-white">{pos.val}</td>
+                          <td className="py-3.5 px-3 font-bold text-emerald-500">{pos.ret}</td>
+                          <td className="py-3.5 px-3">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500">
+                              {pos.st}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const profile = allCompanies.find((c) => c.ticker === pos.ticker) || (allCompanies[0] || null)
+                                setSelectedCompanyProfile(profile)
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-white font-bold text-[11px] transition-colors cursor-pointer"
+                            >
+                              Dossier
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
 
             {/* Asset Diversification Breakdown */}
-            <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40 space-y-3">
+            <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 shadow-2xs space-y-3">
               <h4 className="text-xs font-bold text-slate-900 dark:text-white">Portfolio Sector Diversification</h4>
-              <div className="space-y-2">
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-slate-600 dark:text-zinc-400">AI & Machine Learning (TechFlow AI)</span>
-                    <span className="font-bold text-slate-900 dark:text-white">61.7% ($38,500)</span>
+              {livePositions.length === 0 ? (
+                <p className="text-xs text-slate-500 dark:text-zinc-400 py-1 font-medium">
+                  No active holdings to calculate sector diversification. Acquire shares to populate your portfolio distribution.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-600 dark:text-zinc-400">AI & Machine Learning (TechFlow AI)</span>
+                      <span className="font-bold text-slate-900 dark:text-white">61.7% ($38,500)</span>
+                    </div>
+                    <div className="w-full bg-slate-200 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
+                      <div className="bg-indigo-500 h-full rounded-full" style={{ width: "61.7%" }} />
+                    </div>
                   </div>
-                  <div className="w-full bg-slate-200 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
-                    <div className="bg-indigo-500 h-full rounded-full" style={{ width: "61.7%" }} />
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-600 dark:text-zinc-400">CleanTech & Energy (GreenLeaf)</span>
+                      <span className="font-bold text-slate-900 dark:text-white">19.9% ($12,400)</span>
+                    </div>
+                    <div className="w-full bg-slate-200 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
+                      <div className="bg-[#00d09c] h-full rounded-full" style={{ width: "19.9%" }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-600 dark:text-zinc-400">DeepTech & Nano Materials (Quantum Materials)</span>
+                      <span className="font-bold text-slate-900 dark:text-white">18.4% ($11,500)</span>
+                    </div>
+                    <div className="w-full bg-slate-200 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
+                      <div className="bg-purple-500 h-full rounded-full" style={{ width: "18.4%" }} />
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-slate-600 dark:text-zinc-400">CleanTech & Energy (GreenLeaf)</span>
-                    <span className="font-bold text-slate-900 dark:text-white">19.9% ($12,400)</span>
-                  </div>
-                  <div className="w-full bg-slate-200 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
-                    <div className="bg-[#00d09c] h-full rounded-full" style={{ width: "19.9%" }} />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-slate-600 dark:text-zinc-400">DeepTech & Nano Materials (Quantum Materials)</span>
-                    <span className="font-bold text-slate-900 dark:text-white">18.4% ($11,500)</span>
-                  </div>
-                  <div className="w-full bg-slate-200 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
-                    <div className="bg-purple-500 h-full rounded-full" style={{ width: "18.4%" }} />
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* ─── 3. TAB: ORDERS (VENTURE ORDER EXECUTION BOOK) ───────────────── */}
+        {/* ─── 3. TAB: ORDERS (CORPORATE SECONDARY ORDER BOOK) ───────────────── */}
         {activeNavTab === "orders" && (
           <div className="p-4 sm:p-6 space-y-6">
-            <div className="border border-slate-200 dark:border-zinc-800 rounded-xl overflow-hidden bg-white dark:bg-zinc-900/60 shadow-xs">
-              <div className="p-4 border-b border-slate-100 dark:border-zinc-800/80 flex items-center justify-between">
+            <div className="rounded-xl overflow-hidden bg-slate-50/50 dark:bg-zinc-900/40 shadow-xs">
+              <div className="p-4 border-b border-slate-200/40 dark:border-zinc-800/40 flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     <FileCheck className="h-4 w-4 text-blue-500" />
-                    Venture Orders & Allocation Transactions
+                    Corporate Orders & Share Executions
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
                     Audited ledger records with cryptographic contract hash confirmation
@@ -1445,11 +2141,11 @@ export default function ExplorePage() {
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 dark:bg-zinc-900/90 text-slate-500 dark:text-zinc-400 uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-zinc-800">
+                  <thead className="bg-slate-50 dark:bg-zinc-900/90 text-slate-500 dark:text-zinc-400 uppercase text-[10px] tracking-wider border-b border-slate-200/40 dark:border-zinc-800/40">
                     <tr>
                       <th className="py-3 px-4">Order ID</th>
-                      <th className="py-3 px-3">Venture Name</th>
-                      <th className="py-3 px-3">Round / Instrument</th>
+                      <th className="py-3 px-3">Company Name</th>
+                      <th className="py-3 px-3">Share Class / Instrument</th>
                       <th className="py-3 px-3">Invested Amount</th>
                       <th className="py-3 px-3">Units / Shares</th>
                       <th className="py-3 px-3">Date & Time</th>
@@ -1458,84 +2154,55 @@ export default function ExplorePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/80">
-                    {[
-                      {
-                        id: "ORD-9201",
-                        venture: "Quantum Materials Corp",
-                        instrument: "Series A Preferred",
-                        amount: "$10,000.00",
-                        shares: "1,000 @ $10.00",
-                        date: "2026-09-11 14:32:10",
-                        status: "FILLED",
-                        statusLabel: "Executed & Settled",
-                        badge: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-                      },
-                      {
-                        id: "ORD-8942",
-                        venture: "TechFlow AI Solutions",
-                        instrument: "SAFE Note (20% Discount)",
-                        amount: "$15,000.00",
-                        shares: "SAFE Tranche 2",
-                        date: "2026-08-19 10:15:44",
-                        status: "FILLED",
-                        statusLabel: "Executed & Settled",
-                        badge: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-                      },
-                      {
-                        id: "ORD-8815",
-                        venture: "BioVanguard Labs",
-                        instrument: "Seed Equity Round",
-                        amount: "$5,000.00",
-                        shares: "500 @ $10.00",
-                        date: "2026-09-12 18:40:02",
-                        status: "PENDING",
-                        statusLabel: "Pending Escrow Signature",
-                        badge: "bg-amber-500/10 text-amber-500 border-amber-500/20",
-                      },
-                      {
-                        id: "ORD-8604",
-                        venture: "TerraVolt Storage",
-                        instrument: "Series A Equity",
-                        amount: "$15,000.00",
-                        shares: "1,500 @ $10.00",
-                        date: "2026-07-28 09:22:15",
-                        status: "FILLED",
-                        statusLabel: "Executed & Settled",
-                        badge: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-                      },
-                    ]
-                      .filter((ord) => orderFilter === "ALL" || ord.status === orderFilter)
-                      .map((ord) => (
-                        <tr key={ord.id} className="hover:bg-slate-50/80 dark:hover:bg-zinc-800/40 transition-colors">
-                          <td className="py-3.5 px-4 font-mono font-bold text-slate-900 dark:text-white">
-                            {ord.id}
-                          </td>
-                          <td className="py-3.5 px-3 font-semibold text-slate-900 dark:text-white">
-                            {ord.venture}
-                          </td>
-                          <td className="py-3.5 px-3 text-slate-600 dark:text-zinc-300">{ord.instrument}</td>
-                          <td className="py-3.5 px-3 font-bold text-[#00d09c]">{ord.amount}</td>
-                          <td className="py-3.5 px-3 text-slate-500 dark:text-zinc-400 font-mono">{ord.shares}</td>
-                          <td className="py-3.5 px-3 text-slate-500 dark:text-zinc-400 text-[11px]">{ord.date}</td>
-                          <td className="py-3.5 px-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${ord.badge}`}>
-                              {ord.statusLabel}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4 text-right">
-                            <button className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-white font-bold text-[11px] transition-colors cursor-pointer">
-                              View Receipt
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                    {liveOrders.filter((ord) => orderFilter === "ALL" || ord.status === orderFilter).length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-10 text-center text-slate-500 dark:text-zinc-400">
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <FileCheck className="h-7 w-7 text-slate-400 dark:text-zinc-600 mb-0.5" />
+                            <p className="font-bold text-xs text-slate-700 dark:text-zinc-300">No corporate secondary orders</p>
+                            <p className="text-[11px] text-slate-500 dark:text-zinc-500 max-w-sm">
+                              {orderFilter === "ALL"
+                                ? "No trade executions or pending escrow orders recorded on your ledger."
+                                : `No orders found matching status filter "${orderFilter}".`}
+                            </p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      liveOrders
+                        .filter((ord) => orderFilter === "ALL" || ord.status === orderFilter)
+                        .map((ord) => (
+                          <tr key={ord.id} className="hover:bg-slate-50/80 dark:hover:bg-zinc-800/40 transition-colors">
+                            <td className="py-3.5 px-4 font-mono font-bold text-slate-900 dark:text-white">
+                              {ord.id}
+                            </td>
+                            <td className="py-3.5 px-3 font-semibold text-slate-900 dark:text-white">
+                              {ord.company}
+                            </td>
+                            <td className="py-3.5 px-3 text-slate-600 dark:text-zinc-300">{ord.instrument}</td>
+                            <td className="py-3.5 px-3 font-bold text-[#00d09c]">{ord.amount}</td>
+                            <td className="py-3.5 px-3 text-slate-500 dark:text-zinc-400 font-mono">{ord.shares}</td>
+                            <td className="py-3.5 px-3 text-slate-500 dark:text-zinc-400 text-[11px]">{ord.date}</td>
+                            <td className="py-3.5 px-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${ord.badge}`}>
+                                {ord.statusLabel}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <button className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-white font-bold text-[11px] transition-colors cursor-pointer">
+                                View Receipt
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
 
             {/* Compliance Note */}
-            <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40 flex items-start gap-3">
+            <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 shadow-2xs flex items-start gap-3">
               <ShieldCheck className="h-5 w-5 text-[#00d09c] shrink-0 mt-0.5" />
               <div className="text-xs space-y-1">
                 <span className="font-bold text-slate-900 dark:text-white block">
@@ -1559,27 +2226,27 @@ export default function ExplorePage() {
                   My Pinned Watchlist (6 Companies)
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-                  Track price alerts, round closures, and corporate milestones in real-time
+                  Track price alerts, corporate filings, and secondary trading volume in real-time
                 </p>
               </div>
               <button className="px-3 py-1.5 rounded-lg bg-[#00d09c] text-black font-bold text-xs hover:bg-[#00b888] transition-colors cursor-pointer flex items-center gap-1.5">
                 <Star className="h-3.5 w-3.5 fill-black" />
-                Add Venture
+                Add Company
               </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[
-                { name: "TechFlow AI Solutions", ticker: "TFLOW", sector: "AI & Cloud", val: "$42.5M", change: "+14.2%", funded: 88, stage: "Series A", target: "$2.5M" },
-                { name: "NovaPay Technologies", ticker: "NPAY", sector: "Fintech", val: "$65.0M", change: "+3.1%", funded: 94, stage: "Series B", target: "$5.0M" },
-                { name: "CyberShield Vault", ticker: "CYBR", sector: "Cybersecurity", val: "$52.0M", change: "+15.7%", funded: 92, stage: "Series B", target: "$3.0M" },
-                { name: "TerraVolt Storage", ticker: "TVLT", sector: "CleanTech", val: "$62.0M", change: "+8.4%", funded: 65, stage: "Series A", target: "$7.5M" },
-                { name: "Aether Dynamics", ticker: "AETH", sector: "SpaceTech", val: "$48.0M", change: "+22.5%", funded: 45, stage: "Series A", target: "$5.0M" },
-                { name: "BioVanguard Labs", ticker: "BVGD", sector: "Biotech", val: "$22.0M", change: "+5.9%", funded: 58, stage: "Seed", target: "$2.8M" },
+                { name: "TechFlow AI Solutions", ticker: "TFLOW", sector: "AI & Cloud", val: "$42.5M", change: "+14.2%", status: "Active Trading", revenue: "$15.2M ARR" },
+                { name: "NovaPay Technologies", ticker: "NPAY", sector: "Fintech", val: "$65.0M", change: "+3.1%", status: "Active Trading", revenue: "$22.8M ARR" },
+                { name: "CyberShield Vault", ticker: "CYBR", sector: "Cybersecurity", val: "$52.0M", change: "+15.7%", status: "Active Trading", revenue: "$18.6M ARR" },
+                { name: "TerraVolt Storage", ticker: "TVLT", sector: "CleanTech", val: "$62.0M", change: "+8.4%", status: "Active Trading", revenue: "$19.8M ARR" },
+                { name: "Aether Dynamics", ticker: "AETH", sector: "SpaceTech", val: "$48.0M", change: "+22.5%", status: "Active Trading", revenue: "$12.4M ARR" },
+                { name: "BioVanguard Labs", ticker: "BVGD", sector: "Biotech", val: "$22.0M", change: "+5.9%", status: "Operating - Private", revenue: "$3.5M ARR" },
               ].map((wl) => (
                 <div
                   key={wl.name}
-                  className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40 hover:border-slate-300 dark:hover:border-zinc-700 transition-all space-y-3"
+                  className="p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-zinc-800/80 shadow-2xs hover:shadow-xs transition-all space-y-3"
                 >
                   <div className="flex items-start justify-between">
                     <div>
@@ -1592,7 +2259,7 @@ export default function ExplorePage() {
                       </span>
                     </div>
                     <span className="badge-accent text-[10px] font-bold px-2 py-0.5 rounded-full">
-                      {wl.stage}
+                      {wl.status}
                     </span>
                   </div>
 
@@ -1602,21 +2269,22 @@ export default function ExplorePage() {
                       <span className="text-emerald-500 font-bold">{wl.change} 24h</span>
                     </div>
                     <div className="flex justify-between text-[10px] text-slate-400">
-                      <span>Funded {wl.funded}% of {wl.target}</span>
-                    </div>
-                    <div className="w-full bg-slate-200 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-[#00d09c] h-full rounded-full" style={{ width: `${wl.funded}%` }} />
+                      <span>Annual Revenue: <strong className="text-slate-700 dark:text-zinc-300">{wl.revenue}</strong></span>
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-200/70 dark:border-zinc-800 flex items-center justify-between">
+                  <div className="pt-2 flex items-center justify-between">
                     <span className="text-[10px] text-slate-400">Alerts: Active</span>
-                    <Link
-                      to="/ventures"
-                      className="px-3 py-1 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-zinc-950 font-bold text-xs hover:bg-slate-800 dark:hover:bg-zinc-200 transition-colors"
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const profile = allCompanies.find((c) => c.ticker === wl.ticker) || (allCompanies[0] || null)
+                        setSelectedCompanyProfile(profile)
+                      }}
+                      className="px-3 py-1 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-zinc-950 font-bold text-xs hover:bg-slate-800 dark:hover:bg-zinc-200 transition-colors cursor-pointer"
                     >
-                      Invest Now
-                    </Link>
+                      View Dossier
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1633,7 +2301,7 @@ export default function ExplorePage() {
                 Curated Ecosystem Sector Watchlists
               </h3>
               <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-                Thematic venture baskets curated by White Quantex research analysts
+                Thematic corporate industry baskets curated by White Quantex research analysts
               </p>
             </div>
 
@@ -1680,17 +2348,17 @@ export default function ExplorePage() {
                   desc: "Targeted oncology payloads, gene synthesis platforms, and AI pathology diagnostics.",
                 },
                 {
-                  title: "Pre-Seed Breakout Radar",
+                  title: "High-Growth Corporate Radar",
                   count: 15,
                   change: "+32.0% 30d",
                   followers: "1,150",
                   constituents: "FinLedger, SolarHarvest, OmniLogic",
-                  desc: "High-momentum pre-seed rounds curated directly from university incubators & accelerators.",
+                  desc: "Established mid-tier corporate issuers displaying accelerated top-line ARR expansion.",
                 },
               ].map((basket) => (
                 <div
                   key={basket.title}
-                  className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40 hover:border-purple-500/40 transition-all space-y-3 flex flex-col justify-between"
+                  className="p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-zinc-800/80 shadow-2xs hover:shadow-xs transition-all space-y-3 flex flex-col justify-between"
                 >
                   <div>
                     <div className="flex items-start justify-between gap-2">
@@ -1707,7 +2375,7 @@ export default function ExplorePage() {
                     </p>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-200/70 dark:border-zinc-800 flex items-center justify-between text-xs">
+                  <div className="pt-3 flex items-center justify-between text-xs">
                     <span className="text-[10px] text-slate-400 truncate max-w-[170px]">
                       Top: {basket.constituents}
                     </span>
@@ -1721,15 +2389,459 @@ export default function ExplorePage() {
           </div>
         )}
 
+        {/* ─── 5.5. TAB: INDEX (OPERATING COMPANIES DIRECTORY ONLY - NOT VENTURES) ─── */}
+        {activeNavTab === "index" && (
+          <div className="p-4 sm:p-6 space-y-6">
+            {/* Top Corporate Registry Scope Card */}
+            <div className="p-3.5 sm:p-4 rounded-xl bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white shadow-xs relative overflow-hidden">
+              <div className="absolute right-0 top-0 bottom-0 w-96 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-500/10 via-transparent to-transparent pointer-events-none" />
+              <div className="relative z-10 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 flex items-center gap-1">
+                      <Building2 className="h-2.5 w-2.5 text-indigo-400" />
+                      Corporate Registry
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">
+                      <ShieldCheck className="h-2.5 w-2.5 text-emerald-400" />
+                      Companies Only · No Ventures
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    SEC CIK & Delaware Division of Corporations Verified
+                  </span>
+                </div>
+
+                <div className="space-y-0.5">
+                  <h2 className="text-base sm:text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                    Corporate Issuers Index Directory
+                  </h2>
+                  <p className="text-xs text-slate-300 max-w-3xl leading-relaxed">
+                    Directory of verified operational companies, incorporating Delaware C-Corps, statutory legal entities, executive officers, and enterprise valuations. Strictly operating corporate entities — excluding active venture crowdfunding campaigns and rounds.
+                  </p>
+                </div>
+
+                {/* KPI Metrics Strip */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                  <div className="p-2 rounded-lg bg-white/5 border border-white/10 backdrop-blur-xs">
+                    <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-semibold">Corporate Issuers</span>
+                    <span className="text-xs sm:text-sm font-extrabold text-white mt-0.5 block">{(backendOverview?.totalRegisteredCompanies || allCompanies.length || 25)} Verified</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-white/5 border border-white/10 backdrop-blur-xs">
+                    <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-semibold">Aggregate Valuation</span>
+                    <span className="text-xs sm:text-sm font-extrabold text-[#00d09c] mt-0.5 block">$1.08 Billion</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-white/5 border border-white/10 backdrop-blur-xs">
+                    <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-semibold">Legal Entities</span>
+                    <span className="text-xs sm:text-sm font-extrabold text-indigo-300 mt-0.5 block">100% C-Corp / Inc</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-white/5 border border-white/10 backdrop-blur-xs">
+                    <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-semibold">Corporate Trust</span>
+                    <span className="text-xs sm:text-sm font-extrabold text-amber-300 mt-0.5 block">94.8 / 100</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter, Search & View Controls */}
+            <div className="space-y-3">
+              {/* Search Bar & View Mode Toggle */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-zinc-500" />
+                  <input
+                    type="text"
+                    value={indexSearchQuery}
+                    onChange={(e) => setIndexSearchQuery(e.target.value)}
+                    placeholder="Search operating companies by legal name, ticker, CEO, sector, CIK, HQ..."
+                    className="w-full pl-10 pr-9 py-2 rounded-xl text-xs sm:text-sm bg-slate-100/90 dark:bg-zinc-900 border-0 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:bg-slate-100 dark:focus:bg-zinc-800 transition-colors"
+                  />
+                  {indexSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setIndexSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Sort Selector */}
+                  <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100/80 dark:bg-zinc-900 text-xs">
+                    <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="text-slate-500 dark:text-zinc-400 font-semibold hidden sm:inline">Sort:</span>
+                    <select
+                      value={indexSortBy}
+                      onChange={(e) => setIndexSortBy(e.target.value as any)}
+                      className="bg-transparent font-bold text-slate-900 dark:text-white focus:outline-none cursor-pointer text-xs"
+                    >
+                      <option value="valuation" className="bg-white dark:bg-zinc-900 text-slate-900 dark:text-white">Valuation (High to Low)</option>
+                      <option value="name" className="bg-white dark:bg-zinc-900 text-slate-900 dark:text-white">Company Name (A-Z)</option>
+                      <option value="founded" className="bg-white dark:bg-zinc-900 text-slate-900 dark:text-white">Year Founded</option>
+                      <option value="employees" className="bg-white dark:bg-zinc-900 text-slate-900 dark:text-white">Employee Count</option>
+                    </select>
+                  </div>
+
+                  {/* View Mode Toggle: Table / Grid */}
+                  <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-zinc-900">
+                    <button
+                      type="button"
+                      onClick={() => setIndexViewMode("table")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        indexViewMode === "table"
+                          ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-white shadow-xs"
+                          : "text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"
+                      }`}
+                      title="Table Directory View"
+                    >
+                      <Table className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Table</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIndexViewMode("grid")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        indexViewMode === "grid"
+                          ? "bg-white dark:bg-zinc-800 text-slate-900 dark:text-white shadow-xs"
+                          : "text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"
+                      }`}
+                      title="Grid Card View"
+                    >
+                      <LayoutGrid className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Grid</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* A-Z Alphabetical Directory Jump Bar */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-zinc-400">
+                  <span className="font-semibold flex items-center gap-1">
+                    Alphabetical Directory Jump:
+                  </span>
+                  <span>
+                    Showing <strong>{filteredCompaniesIndex.length}</strong> of {(backendOverview?.totalRegisteredCompanies || allCompanies.length || 25)} corporate issuers
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none">
+                  {alphabetLetters.map((letter) => {
+                    const isLetterActive = indexSelectedLetter === letter
+                    const countForLetter = letter === "ALL" 
+                      ? (backendOverview?.totalRegisteredCompanies || allCompanies.length || 25) 
+                      : allCompanies.filter((c) => c.name.toUpperCase().startsWith(letter)).length
+                    return (
+                      <button
+                        key={letter}
+                        type="button"
+                        onClick={() => setIndexSelectedLetter(letter)}
+                        disabled={countForLetter === 0 && letter !== "ALL"}
+                        className={`px-2 py-1 rounded text-xs font-mono font-bold transition-all cursor-pointer shrink-0 ${
+                          isLetterActive
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : countForLetter === 0
+                            ? "text-slate-300 dark:text-zinc-700 cursor-not-allowed"
+                            : "bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800/60 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300"
+                        }`}
+                      >
+                        {letter}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Sector Filter Chips */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 shrink-0 mr-1 flex items-center gap-1">
+                  <Filter className="h-3 w-3" /> Sector:
+                </span>
+                {indexSectorList.map((sector) => {
+                  const isSectorActive = indexSelectedSector === sector
+                  return (
+                    <button
+                      key={sector}
+                      type="button"
+                      onClick={() => setIndexSelectedSector(sector)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all shrink-0 cursor-pointer ${
+                        isSectorActive
+                          ? "bg-slate-900 text-white dark:bg-white dark:text-zinc-950 shadow-xs"
+                          : "bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800/50 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                      }`}
+                    >
+                      {sector}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Empty Search / Filter State */}
+            {filteredCompaniesIndex.length === 0 ? (
+              <div className="p-12 text-center rounded-2xl border border-dashed border-slate-300 dark:border-zinc-800 space-y-3">
+                <div className="h-12 w-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
+                  <Building2 className="h-6 w-6" />
+                </div>
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                  No Operating Companies Found
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-zinc-400 max-w-sm mx-auto">
+                  No registered corporate issuers match your query &quot;{indexSearchQuery || indexSelectedLetter}&quot; in the selected sector.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIndexSearchQuery("")
+                    setIndexSelectedLetter("ALL")
+                    setIndexSelectedSector("All")
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors cursor-pointer"
+                >
+                  Reset Directory Filters
+                </button>
+              </div>
+            ) : indexViewMode === "table" ? (
+              /* ── TABLE VIEW ─────────────────────────────────────────── */
+              <div className="rounded-xl overflow-hidden bg-white dark:bg-zinc-900/40 border border-slate-200/80 dark:border-zinc-800/80 shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50/90 dark:bg-zinc-900/80 text-slate-500 dark:text-zinc-400 font-semibold border-b border-slate-200/60 dark:border-zinc-800/60 select-none">
+                      <tr>
+                        <th className="py-3 px-4">Company & Legal Entity</th>
+                        <th className="py-3 px-3">Ticker / CIK</th>
+                        <th className="py-3 px-3">Sector & Specialization</th>
+                        <th className="py-3 px-3">Headquarters</th>
+                        <th className="py-3 px-3">Executive CEO</th>
+                        <th className="py-3 px-3 text-right">Headcount</th>
+                        <th className="py-3 px-3 text-right">Valuation / ARR</th>
+                        <th className="py-3 px-3 text-center">Status</th>
+                        <th className="py-3 px-4 text-right">Dossier</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/80 font-normal">
+                      {filteredCompaniesIndex.map((comp) => (
+                        <tr
+                          key={comp.id}
+                          onClick={() => setSelectedCompanyProfile(comp)}
+                          className="hover:bg-slate-50/80 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer group"
+                        >
+                          {/* Company Name & Entity */}
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <div
+                                style={getCompanyLogoStyle(comp.logoColor, comp.ticker)}
+                                className="h-8 w-8 rounded-lg text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-xs ring-1 ring-slate-200/80 dark:ring-zinc-800"
+                              >
+                                {comp.name.substring(0, 2).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors block truncate">
+                                  {comp.name}
+                                </span>
+                                <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-mono">
+                                  {comp.legalEntity} · Est. {comp.foundedYear || (comp as any).founded}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Ticker / CIK */}
+                          <td className="py-3.5 px-3">
+                            <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 block w-fit">
+                              {comp.ticker}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
+                              {comp.cik}
+                            </span>
+                          </td>
+
+                          {/* Sector & SubIndustry */}
+                          <td className="py-3.5 px-3">
+                            <span className="font-semibold text-slate-800 dark:text-zinc-200 block">
+                              {comp.sector}
+                            </span>
+                            <span className="text-[11px] text-slate-500 dark:text-zinc-400 truncate block max-w-[180px]">
+                              {comp.subIndustry}
+                            </span>
+                          </td>
+
+                          {/* Headquarters */}
+                          <td className="py-3.5 px-3">
+                            <span className="flex items-center gap-1 text-slate-700 dark:text-zinc-300">
+                              <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+                              {comp.headquarters}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block pl-4">
+                              {comp.region}
+                            </span>
+                          </td>
+
+                          {/* CEO */}
+                          <td className="py-3.5 px-3">
+                            <span className="flex items-center gap-1 font-semibold text-slate-800 dark:text-zinc-200">
+                              <User className="h-3 w-3 text-slate-400 shrink-0" />
+                              {comp.ceo}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block pl-4">
+                              Chief Executive
+                            </span>
+                          </td>
+
+                          {/* Employees */}
+                          <td className="py-3.5 px-3 text-right">
+                            <span className="font-bold text-slate-800 dark:text-zinc-200 font-mono">
+                              {comp.employees}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block">
+                              FTEs
+                            </span>
+                          </td>
+
+                          {/* Valuation & ARR */}
+                          <td className="py-3.5 px-3 text-right">
+                            <span className="font-extrabold text-slate-900 dark:text-white font-mono block">
+                              {comp.valuation}
+                            </span>
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block">
+                              {comp.annualRevenue}
+                            </span>
+                          </td>
+
+                          {/* Status & Verification */}
+                          <td className="py-3.5 px-3 text-center">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 inline-block">
+                              {comp.status}
+                            </span>
+                            <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold mt-0.5">
+                              {comp.verificationLevel || (comp as any).verification}
+                            </span>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-3.5 px-4 text-right">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedCompanyProfile(comp)
+                              }}
+                              className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 dark:bg-zinc-800 dark:hover:bg-indigo-950/60 text-slate-700 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                            >
+                              Dossier
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              /* ── GRID CARD VIEW ─────────────────────────────────────── */
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {filteredCompaniesIndex.map((comp) => (
+                  <div
+                    key={comp.id}
+                    onClick={() => setSelectedCompanyProfile(comp)}
+                    className="p-3 rounded-xl bg-white dark:bg-zinc-900/60 border border-slate-200/80 dark:border-zinc-800/80 shadow-2xs hover:shadow-xs transition-all cursor-pointer space-y-2.5 flex flex-col justify-between group"
+                  >
+                    <div className="space-y-2">
+                      {/* Card Header */}
+                      <div className="flex items-start justify-between gap-1.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div
+                            style={getCompanyLogoStyle(comp.logoColor, comp.ticker)}
+                            className="h-7 w-7 rounded-lg text-white font-extrabold flex items-center justify-center text-[11px] shadow-2xs shrink-0 ring-1 ring-slate-200/80 dark:ring-zinc-800"
+                          >
+                            {comp.name.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-slate-900 dark:text-white text-xs group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate">
+                              {comp.name}
+                            </h4>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <span className="px-1 py-0.2 rounded text-[9px] font-mono font-bold bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200">
+                                {comp.ticker}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-mono truncate">
+                                {comp.legalEntity}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shrink-0">
+                          {comp.verificationLevel || (comp as any).verification}
+                        </span>
+                      </div>
+
+                      {/* Sector & Sub-industry */}
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-700 dark:text-zinc-300 block truncate">
+                          {comp.sector} · {comp.subIndustry}
+                        </span>
+                        <p className="text-[11px] text-slate-500 dark:text-zinc-400 line-clamp-2 leading-relaxed mt-0.5">
+                          {comp.description}
+                        </p>
+                      </div>
+
+                      {/* Compact Financial & Headcount Grid */}
+                      <div className="grid grid-cols-2 gap-x-2 gap-y-1 p-2 rounded-lg bg-slate-100/60 dark:bg-zinc-800/40 text-[10px]">
+                        <div>
+                          <span className="text-[9px] text-slate-400 block">Valuation</span>
+                          <span className="font-extrabold text-slate-900 dark:text-white font-mono text-[11px] block">{comp.valuation}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 block">Revenue Run-rate</span>
+                          <span className="font-extrabold text-emerald-600 dark:text-emerald-400 font-mono text-[11px] block">{comp.annualRevenue}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 block">Headcount</span>
+                          <span className="font-semibold text-slate-800 dark:text-zinc-200 text-[10px] block">{comp.employees} FTEs</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 block">Founded</span>
+                          <span className="font-semibold text-slate-800 dark:text-zinc-200 text-[10px] block">{comp.foundedYear || (comp as any).founded}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Footer */}
+                    <div className="pt-2 flex items-center justify-between text-[10px]">
+                      <div className="flex items-center gap-1 text-slate-500 dark:text-zinc-400 text-[10px] truncate max-w-[150px]">
+                        <User className="h-2.5 w-2.5 shrink-0 text-slate-400" />
+                        <span className="truncate">{comp.ceo}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedCompanyProfile(comp)
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-slate-900 dark:bg-white text-white dark:text-zinc-950 font-bold text-[10px] hover:bg-indigo-600 dark:hover:bg-zinc-200 transition-colors flex items-center gap-0.5 cursor-pointer"
+                      >
+                        Dossier
+                        <ChevronRight className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ─── 6. TAB: NEWS & NOTIFICATIONS (INVESTED COMPANIES ONLY) ─────────── */}
         {activeNavTab === "news" && (
           <div className="p-4 sm:p-6 space-y-6">
             
             {/* Top Section Header & KPI Overview */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-zinc-800">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/40 dark:border-zinc-800/40">
               <div>
                 <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
+                  <div className="h-8 w-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500">
                     <Bell className="h-4 w-4" />
                   </div>
                   <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
@@ -1737,7 +2849,7 @@ export default function ExplorePage() {
                   </h3>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
-                  Exclusively filtered for your 3 active venture holdings: <strong className="text-slate-800 dark:text-zinc-200">TechFlow AI Solutions</strong>, <strong className="text-slate-800 dark:text-zinc-200">GreenLeaf Energy</strong>, and <strong className="text-slate-800 dark:text-zinc-200">Quantum Materials Corp</strong>.
+                  Exclusively filtered for your 3 active corporate equity holdings: <strong className="text-slate-800 dark:text-zinc-200">TechFlow AI Solutions</strong>, <strong className="text-slate-800 dark:text-zinc-200">GreenLeaf Energy</strong>, and <strong className="text-slate-800 dark:text-zinc-200">Quantum Materials Corp</strong>.
                 </p>
               </div>
 
@@ -1745,7 +2857,7 @@ export default function ExplorePage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setDismissedNoticeIds(holdingsNotifications.map((n) => n.id))
+                    setDismissedNoticeIds(liveHoldingsNotifications.map((n: any) => n.id))
                     setToastMessage("All shareholder notifications marked as read.")
                     setTimeout(() => setToastMessage(null), 3000)
                   }}
@@ -1766,12 +2878,12 @@ export default function ExplorePage() {
 
             {/* KPI Cards for Invested Holdings Intelligence */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40">
+              <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 shadow-2xs">
                 <span className="text-[11px] text-slate-500 dark:text-zinc-400 block">Monitored Holdings Value</span>
                 <p className="text-2xl font-black text-[#00d09c] mt-1">$62,400.00</p>
                 <span className="text-[10px] text-emerald-500 font-bold">+38.6% All-Time Portfolio ROI</span>
               </div>
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40">
+              <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 shadow-2xs">
                 <span className="text-[11px] text-slate-500 dark:text-zinc-400 block">Pending Shareholder Actions</span>
                 <p className="text-2xl font-black text-rose-500 mt-1">
                   {voteSubmittedSuccess ? "0 Pending" : "1 Vote Required"}
@@ -1780,12 +2892,12 @@ export default function ExplorePage() {
                   {voteSubmittedSuccess ? "Ballot Submitted & Recorded" : "QMAT AGM Proxy Ballot Open"}
                 </span>
               </div>
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40">
+              <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 shadow-2xs">
                 <span className="text-[11px] text-slate-500 dark:text-zinc-400 block">Invested News Coverage</span>
-                <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">{holdingsNews.length} Articles</p>
+                <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">{liveHoldingsNews.length} Articles</p>
                 <span className="text-[10px] text-emerald-500 font-bold">100% Holdings Coverage</span>
               </div>
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40">
+              <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 shadow-2xs">
                 <span className="text-[11px] text-slate-500 dark:text-zinc-400 block">Cash Yield Settled (YTD)</span>
                 <p className="text-2xl font-black text-blue-500 mt-1">$320.00</p>
                 <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold">Credited from GreenLeaf Energy</span>
@@ -1793,7 +2905,7 @@ export default function ExplorePage() {
             </div>
 
             {/* Filter Chips & Search Bar */}
-            <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-3">
+            <div className="p-4 rounded-xl bg-slate-50/60 dark:bg-zinc-900/50 space-y-3">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                 {/* Company Filter Chips */}
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -1812,8 +2924,8 @@ export default function ExplorePage() {
                       onClick={() => setNewsCompanyFilter(chip.id as any)}
                       className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
                         newsCompanyFilter === chip.id
-                          ? "bg-slate-900 text-white dark:bg-white dark:text-zinc-950 border-transparent shadow-xs"
-                          : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:border-slate-300 dark:hover:border-zinc-700"
+                          ? "bg-slate-900 text-white dark:bg-white dark:text-zinc-950 shadow-xs border-transparent"
+                          : "bg-slate-100 dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-800 dark:hover:text-white border-transparent dark:border-zinc-800"
                       }`}
                     >
                       {chip.label}
@@ -1838,8 +2950,8 @@ export default function ExplorePage() {
                       onClick={() => setNewsTypeFilter(typeChip.id as any)}
                       className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer border ${
                         newsTypeFilter === typeChip.id
-                          ? "bg-[#00d09c]/15 text-[#00a87e] dark:text-[#00d09c] border-[#00d09c]/40 font-bold"
-                          : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:border-slate-300"
+                          ? "bg-[#00d09c]/15 text-[#00a87e] dark:text-[#00d09c] font-bold border-[#00d09c]/40 shadow-[0_0_8px_rgba(0,208,156,0.15)]"
+                          : "bg-slate-100 dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-800 dark:hover:text-white border-transparent dark:border-zinc-800"
                       }`}
                     >
                       {typeChip.label}
@@ -1856,7 +2968,7 @@ export default function ExplorePage() {
                   value={newsSearchInput}
                   onChange={(e) => setNewsSearchInput(e.target.value)}
                   placeholder="Search updates across your invested companies (e.g. 'dividend', 'proxy vote', 'patent', 'series b', 'cloud')..."
-                  className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00d09c] focus:border-transparent transition-all"
+                  className="w-full pl-9 pr-4 py-2 rounded-lg border-0 bg-slate-100/90 dark:bg-zinc-900 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:bg-slate-100 dark:focus:bg-zinc-800 transition-all"
                 />
                 {newsSearchInput && (
                   <button
@@ -1886,7 +2998,7 @@ export default function ExplorePage() {
                 </div>
 
                 <div className="space-y-3">
-                  {holdingsNotifications
+                  {liveHoldingsNotifications
                     .filter((notif) => {
                       if (newsCompanyFilter !== "ALL" && notif.ticker !== newsCompanyFilter) return false
                       if (newsTypeFilter === "NEWS") return false
@@ -1909,10 +3021,10 @@ export default function ExplorePage() {
                       return (
                         <div
                           key={notif.id}
-                          className={`p-4 rounded-xl border transition-all space-y-3 ${
+                          className={`p-4 rounded-xl transition-all space-y-3 ${
                             notif.isUrgent && !isVoted
-                              ? "border-rose-500/40 bg-rose-500/5 dark:bg-rose-500/5 shadow-xs"
-                              : "border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 hover:border-slate-300 dark:hover:border-zinc-700"
+                              ? "bg-rose-500/10 dark:bg-rose-500/10 shadow-xs"
+                              : "bg-slate-50/80 dark:bg-zinc-900/60 shadow-2xs hover:shadow-xs"
                           } ${isDismissed ? "opacity-60" : ""}`}
                         >
                           {/* Header row */}
@@ -1925,7 +3037,7 @@ export default function ExplorePage() {
                                 {notif.companyName}
                               </span>
                             </div>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${notif.badgeColor}`}>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${notif.badgeColor}`}>
                               {isVoted ? "Voted - Recorded" : notif.badge}
                             </span>
                           </div>
@@ -1953,7 +3065,7 @@ export default function ExplorePage() {
                           </p>
 
                           {/* Footer Action */}
-                          <div className="pt-2 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between">
+                          <div className="pt-2 flex items-center justify-between">
                             <span className="text-[10px] text-slate-400">
                               Deadline: <strong className="text-slate-700 dark:text-zinc-300">{notif.dueDate}</strong>
                             </span>
@@ -1964,7 +3076,7 @@ export default function ExplorePage() {
                                 onClick={() => setActiveVoteModal(true)}
                                 className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                                   isVoted
-                                    ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                                    ? "bg-emerald-500/10 text-emerald-500"
                                     : "bg-rose-500 hover:bg-rose-600 text-white shadow-xs"
                                 }`}
                               >
@@ -1997,14 +3109,14 @@ export default function ExplorePage() {
                     <Newspaper className="h-4 w-4 text-[#00d09c]" />
                     <h4 className="text-sm font-bold text-slate-900 dark:text-white">Holdings Press & Media Intelligence</h4>
                   </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#00d09c] animate-pulse" />
                     Verified PR Newsdesk
                   </span>
                 </div>
 
                 <div className="space-y-4">
-                  {holdingsNews
+                  {liveHoldingsNews
                     .filter((news) => {
                       if (newsCompanyFilter !== "ALL" && news.ticker !== newsCompanyFilter) return false
                       if (newsTypeFilter === "NOTIFICATIONS" || newsTypeFilter === "ACTION") return false
@@ -2022,12 +3134,15 @@ export default function ExplorePage() {
                     .map((news) => (
                       <div
                         key={news.id}
-                        className="p-4 sm:p-5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 hover:border-[#00d09c]/40 transition-all space-y-3 group"
+                        className="p-4 sm:p-5 rounded-xl bg-slate-50/80 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-zinc-800/80 shadow-2xs hover:shadow-xs transition-all space-y-3 group"
                       >
                         {/* Top Meta Line */}
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <div className={`h-6 w-6 rounded-md ${news.logoColor} text-white font-bold text-[10px] flex items-center justify-center`}>
+                            <div
+                              style={getCompanyLogoStyle(news.logoColor, news.ticker)}
+                              className="h-6 w-6 rounded-md text-white font-bold text-[10px] flex items-center justify-center ring-1 ring-slate-200/80 dark:ring-zinc-800 shrink-0"
+                            >
                               {news.ticker.slice(0, 2)}
                             </div>
                             <span className="text-xs font-bold text-slate-900 dark:text-white">
@@ -2039,10 +3154,10 @@ export default function ExplorePage() {
                           </div>
 
                           <div className="flex items-center gap-1.5">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${news.categoryColor}`}>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${news.categoryColor}`}>
                               {news.category}
                             </span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#00d09c]/10 text-[#00a87e] dark:text-[#00d09c] border border-[#00d09c]/20">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#00d09c]/10 text-[#00a87e] dark:text-[#00d09c]">
                               {news.sentiment}
                             </span>
                           </div>
@@ -2070,7 +3185,7 @@ export default function ExplorePage() {
                         </p>
 
                         {/* Impact Highlight Pill */}
-                        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-zinc-800/60 border border-slate-100 dark:border-zinc-800 flex items-center justify-between text-xs">
+                        <div className="p-2.5 rounded-lg bg-slate-100/70 dark:bg-zinc-800/60 flex items-center justify-between text-xs">
                           <span className="text-[11px] text-slate-500 dark:text-zinc-400 flex items-center gap-1.5">
                             <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
                             Estimated Portfolio Impact:
@@ -2097,7 +3212,7 @@ export default function ExplorePage() {
                         </div>
 
                         {/* Card Bottom CTA */}
-                        <div className="pt-2 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between">
+                        <div className="pt-2 flex items-center justify-between">
                           <span className="text-[11px] text-slate-400">SEC & PR Regulatory Release</span>
                           <div className="flex items-center gap-2">
                             <button
@@ -2315,6 +3430,301 @@ export default function ExplorePage() {
                   className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-zinc-950 transition-colors"
                 >
                   Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 2.5. Corporate Issuer Dossier Modal (Index Tab - Strictly Operating Companies) */}
+        {selectedCompanyProfile && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+            <div className="w-full max-w-2xl bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+              
+              {/* Modal Header */}
+              <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-zinc-800">
+                <div className="flex items-center gap-3">
+                  <div
+                    style={getCompanyLogoStyle(selectedCompanyProfile.logoColor, selectedCompanyProfile.ticker)}
+                    className="h-12 w-12 rounded-xl text-white font-extrabold flex items-center justify-center text-base shadow-xs ring-2 ring-slate-200/80 dark:ring-zinc-800 shrink-0"
+                  >
+                    {selectedCompanyProfile.name.substring(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                        {selectedCompanyProfile.name}
+                      </h3>
+                      <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200">
+                        {selectedCompanyProfile.ticker}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                      <span>{selectedCompanyProfile.legalEntity}</span>
+                      <span>·</span>
+                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{selectedCompanyProfile.headquarters}</span>
+                      <span>·</span>
+                      <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{selectedCompanyProfile.status}</span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCompanyProfile(null)}
+                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Verified Issuer Notice Strip */}
+              <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 text-indigo-900 dark:text-indigo-200">
+                  <ShieldCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <span>
+                    <strong>Corporate Entity Record:</strong> Filed under {selectedCompanyProfile.legalEntity} with official SEC registration CIK: <strong>{selectedCompanyProfile.cik}</strong>.
+                  </span>
+                </div>
+                <span className="px-2 py-0.5 rounded bg-indigo-600 text-white font-bold text-[10px] uppercase tracking-wider shrink-0 text-center">
+                  {selectedCompanyProfile.verification} Verified
+                </span>
+              </div>
+
+              {/* 4-Cell Key Corporate Metrics */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Enterprise Valuation</span>
+                  <span className="text-base font-extrabold text-slate-900 dark:text-white font-mono mt-0.5 block">{selectedCompanyProfile.valuation}</span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Annual Revenue Run-rate</span>
+                  <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 font-mono mt-0.5 block">{selectedCompanyProfile.annualRevenue}</span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Verified Headcount</span>
+                  <span className="text-base font-extrabold text-slate-900 dark:text-white font-mono mt-0.5 block">{selectedCompanyProfile.employees} FTEs</span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Corporate Trust Index</span>
+                  <span className="text-base font-extrabold text-amber-500 font-mono mt-0.5 block">{selectedCompanyProfile.trustScore} / 100</span>
+                </div>
+              </div>
+
+              {/* Corporate Overview & Capabilities */}
+              <div className="space-y-2 text-xs">
+                <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Building2 className="h-4 w-4 text-indigo-500" />
+                  Corporate Description & Technology Scope
+                </h4>
+                <p className="text-slate-600 dark:text-zinc-300 leading-relaxed bg-slate-50 dark:bg-zinc-800/30 p-3.5 rounded-xl border border-slate-100 dark:border-zinc-800">
+                  {selectedCompanyProfile.description}
+                </p>
+              </div>
+
+              {/* Corporate Governance & Statutory Registry Details */}
+              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-zinc-800 space-y-2.5 text-xs">
+                <h4 className="font-bold text-slate-900 dark:text-white">
+                  Corporate Governance & Filing Record
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-600 dark:text-zinc-400">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-zinc-800/40">
+                    <span>Chief Executive Officer</span>
+                    <strong className="text-slate-900 dark:text-white">{selectedCompanyProfile.ceo}</strong>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-zinc-800/40">
+                    <span>Legal Jurisdiction</span>
+                    <strong className="text-slate-900 dark:text-white">{selectedCompanyProfile.legalEntity}</strong>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-zinc-800/40">
+                    <span>SEC CIK Identifier</span>
+                    <strong className="text-slate-900 dark:text-white font-mono">{selectedCompanyProfile.cik}</strong>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-zinc-800/40">
+                    <span>Trading Tier</span>
+                    <strong className="text-slate-900 dark:text-white">{selectedCompanyProfile.exchangeTier}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Strict Notice: Companies Only, Not Ventures */}
+              <div className="p-3 rounded-xl bg-slate-100 dark:bg-zinc-800/60 border border-slate-200 dark:border-zinc-700/60 text-[11px] text-slate-500 dark:text-zinc-400 flex items-start gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-slate-800 dark:text-zinc-200">Operating Corporate Entity Notice:</strong> This dossier represents an operational commercial business and legal corporate entity. It does not represent an active crowdfunding round, investment solicitation, or speculative venture campaign.
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(selectedCompanyProfile.cik)
+                    setToastMessage(`Copied SEC CIK (${selectedCompanyProfile.cik}) to clipboard.`)
+                    setTimeout(() => setToastMessage(null), 3000)
+                  }}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  Copy CIK Registry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCompanyProfile(null)
+                    setToastMessage(`Official Issuer Dossier for ${selectedCompanyProfile.name} exported to downloads.`)
+                    setTimeout(() => setToastMessage(null), 3500)
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export Corporate Dossier
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCompanyProfile(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-zinc-950 transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* 4. Mutual Investment Scheme Factsheet Modal */}
+        {selectedSchemeDetail && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+            <div className="w-full max-w-2xl bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-start justify-between pb-3 border-b border-slate-100 dark:border-zinc-800">
+                <div className="flex items-start gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                    <PieChart className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-extrabold bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                        {selectedSchemeDetail.code}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
+                        {selectedSchemeDetail.strategy}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                        {selectedSchemeDetail.riskLevel} Risk
+                      </span>
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white mt-1">
+                      {selectedSchemeDetail.name}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400">
+                      Managed by {selectedSchemeDetail.manager}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSchemeDetail(null)}
+                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* 4-Cell Key Scheme Metrics */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Net Asset Value (NAV)</span>
+                  <span className="text-base font-extrabold text-slate-900 dark:text-white font-mono mt-0.5 block">{selectedSchemeDetail.nav}</span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">1-Year Return</span>
+                  <span className="text-base font-extrabold text-emerald-600 dark:text-[#00d09c] font-mono mt-0.5 block">{selectedSchemeDetail.oneYearReturn}</span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Total Pool AUM</span>
+                  <span className="text-base font-extrabold text-slate-900 dark:text-white font-mono mt-0.5 block">{selectedSchemeDetail.aum}</span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Min Investment</span>
+                  <span className="text-base font-extrabold text-indigo-600 dark:text-indigo-400 font-mono mt-0.5 block">{selectedSchemeDetail.minInvestment}</span>
+                </div>
+              </div>
+
+              {/* Scheme Strategy & Description */}
+              <div className="space-y-2 text-xs">
+                <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Layers className="h-4 w-4 text-purple-500" />
+                  Portfolio Mandate & Quantitative Strategy
+                </h4>
+                <p className="text-slate-600 dark:text-zinc-300 leading-relaxed bg-slate-50 dark:bg-zinc-800/30 p-3.5 rounded-xl border border-slate-100 dark:border-zinc-800">
+                  {selectedSchemeDetail.description}
+                </p>
+              </div>
+
+              {/* Holdings Breakdown */}
+              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-zinc-800 space-y-2.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <PieChart className="h-4 w-4 text-indigo-500" />
+                    Top Asset Holdings & Weighting
+                  </h4>
+                  <span className="text-[10px] text-slate-400 font-mono">Quarterly Rebalanced</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {selectedSchemeDetail.topHoldings.map((h, i) => (
+                    <span
+                      key={i}
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 font-semibold font-mono text-[11px]"
+                    >
+                      {h}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Benchmark & Statutory Structure */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-slate-600 dark:text-zinc-400">
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-zinc-800/40 border border-slate-200/60 dark:border-zinc-800">
+                  <span>Target Benchmark</span>
+                  <strong className="text-slate-900 dark:text-white font-mono">{selectedSchemeDetail.benchmark}</strong>
+                </div>
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-zinc-800/40 border border-slate-200/60 dark:border-zinc-800">
+                  <span>Annual Management Ratio</span>
+                  <strong className="text-slate-900 dark:text-white font-mono">{selectedSchemeDetail.expenseRatio}</strong>
+                </div>
+              </div>
+
+              {/* Legal Notice */}
+              <div className="p-3 rounded-xl bg-slate-100 dark:bg-zinc-800/60 border border-slate-200 dark:border-zinc-700/60 text-[11px] text-slate-500 dark:text-zinc-400 flex items-start gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-slate-800 dark:text-zinc-200">Statutory Pooled Custody:</strong> All scheme units are custodied under Delaware statutory trust clearing regulations. Escrow contracts settle into authenticated institutional wallets.
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSchemeDetail(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const name = selectedSchemeDetail.name
+                    const code = selectedSchemeDetail.code
+                    setSelectedSchemeDetail(null)
+                    setToastMessage(`Allocation order initiated for ${name} (${code}). Statutory escrow contract created.`)
+                    setTimeout(() => setToastMessage(null), 4000)
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <DollarSign className="h-3.5 w-3.5" />
+                  Participate in Scheme ({selectedSchemeDetail.minInvestment})
                 </button>
               </div>
             </div>

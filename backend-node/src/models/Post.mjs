@@ -7,6 +7,8 @@ const postSchema = new mongoose.Schema(
     authorUsername: { type: String },
     authorAvatarUrl: { type: String },
     authorHeadline: { type: String },
+    authorRole: { type: String, default: "FOUNDER" },
+    authorVerificationLevel: { type: String, default: "GOLD" },
     content: { type: String, required: true, maxlength: 5000 },
     mediaUrls: [{ type: String }],
     videoUrl: { type: String },
@@ -25,5 +27,6 @@ const postSchema = new mongoose.Schema(
 )
 
 postSchema.index({ createdAt: -1 })
+postSchema.index({ communityId: 1, createdAt: -1 })
 
 export const Post = mongoose.model("Post", postSchema)

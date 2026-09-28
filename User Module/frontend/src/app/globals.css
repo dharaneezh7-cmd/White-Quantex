@@ -1,0 +1,327 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+
+/*
+ ============================================================================
+  WHITE QUANTEX — DESIGN SYSTEM v2.0 (BUILT FROM SCRATCH)
+  Architecture  : Tailwind CSS v4 + CSS Custom Properties
+  Brand Accent  : #00d09c (Emerald)
+  Light Theme   : Cool gray whites, crisp contrast
+  Dark Theme    : Zero-navy true black, deep purple-charcoal surfaces
+  Performance   : GPU-accelerated transitions, hardware-accel compositing
+ ============================================================================
+*/
+
+/* ─── TAILWIND DARK VARIANT ─────────────────────────────────────────────── */
+@custom-variant dark (.dark &);
+
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT THEME — CSS CUSTOM PROPERTIES ON :root
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Backgrounds ── */
+  --wq-bg:           #ffffff;   /* Pure white background for light theme */
+  --wq-bg-surface:   #ffffff;   /* Cards, panels, sheets                      */
+  --wq-bg-elevated:  #f5f5f7;   /* Sidebars, inline sections                  */
+  --wq-bg-overlay:   #ffffff;   /* Modals, popovers                           */
+  --wq-bg-input:     #ffffff;   /* Form inputs                                */
+
+  /* ── Foreground / Text ── */
+  --wq-fg:           #0d0d12;   /* Primary body text                          */
+  --wq-fg-muted:     #6b7080;   /* Secondary/descriptive text                 */
+  --wq-fg-subtle:    #9ba3af;   /* Placeholders, hints, timestamps            */
+  --wq-fg-inverse:   #ffffff;   /* Text on dark surfaces / accent buttons     */
+
+  /* ── Borders ── */
+  --wq-border:       #e0e0ea;   /* Default dividers, card borders             */
+  --wq-border-strong:#c4c4d0;   /* Input borders, active rings                */
+  --wq-border-focus: #00d09c;   /* Focus rings                                */
+
+  /* ── Brand Accent — Emerald ── */
+  --wq-accent:       #00d09c;   /* Primary CTA, links, active states          */
+  --wq-accent-hover: #00b888;   /* Hover on accents                           */
+  --wq-accent-press: #009e75;   /* Active/pressed                             */
+  --wq-accent-fg:    #ffffff;   /* Text on accent backgrounds                 */
+  --wq-accent-subtle:#edfaf5;   /* Tinted accent background                   */
+  --wq-accent-ring:  rgba(0, 208, 156, 0.3);  /* Glow/ring for accent buttons */
+
+  /* ── Semantic Colors ── */
+  --wq-destructive:  #dc2626;   /* Error / danger                             */
+  --wq-destructive-fg:#ffffff;
+  --wq-destructive-subtle:#fef2f2;
+  --wq-warning:      #d97706;   /* Warning                                    */
+  --wq-warning-subtle:#fffbeb;
+  --wq-success:      #059669;   /* Success / confirmed                        */
+  --wq-success-subtle:#ecfdf5;
+  --wq-info:         #0284c7;   /* Info                                       */
+  --wq-info-subtle:  #eff6ff;
+
+  /* ── Shadows ── */
+  --wq-shadow-xs:    0 1px 2px rgba(0,0,0,0.04);
+  --wq-shadow-sm:    0 2px 6px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --wq-shadow-md:    0 4px 16px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --wq-shadow-lg:    0 8px 32px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.05);
+  --wq-shadow-xl:    0 16px 48px rgba(0,0,0,0.12), 0 8px 16px rgba(0,0,0,0.06);
+
+  /* ── Glass ── */
+  --wq-glass-bg:     rgba(255, 255, 255, 0.80);
+  --wq-glass-border: rgba(224, 224, 234, 0.70);
+  --wq-glass-blur:   blur(16px) saturate(160%);
+
+  /* ── Navbar ── */
+  --wq-nav-bg:       rgba(255, 255, 255, 0.92);
+  --wq-nav-border:   rgba(224, 224, 234, 0.80);
+
+  /* ── Typography ── */
+  --wq-font-sans:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --wq-font-mono:    'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+
+  /* ── Border Radius ── */
+  --wq-radius-sm:    6px;
+  --wq-radius:       10px;
+  --wq-radius-lg:    14px;
+  --wq-radius-xl:    20px;
+
+  /* ── Scrollbar ── */
+  --wq-scrollbar-thumb: #c4c4d0;
+  --wq-scrollbar-thumb-hover: #9ba3af;
+
+  /* ── Transition ── */
+  --wq-transition:   150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --wq-transition-slow: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Tailwind bridge ── */
+  --color-background:       var(--wq-bg);
+  --color-foreground:       var(--wq-fg);
+  --color-border:           var(--wq-border);
+  --color-card:             var(--wq-bg-surface);
+  --color-card-foreground:  var(--wq-fg);
+  --color-popover:          var(--wq-bg-overlay);
+  --color-popover-foreground: var(--wq-fg);
+  --color-primary:          var(--wq-accent);
+  --color-primary-foreground: var(--wq-accent-fg);
+  --color-secondary:        var(--wq-bg-elevated);
+  --color-secondary-foreground: var(--wq-fg);
+  --color-muted:            var(--wq-bg-elevated);
+  --color-muted-foreground: var(--wq-fg-muted);
+  --color-accent:           var(--wq-accent);
+  --color-accent-foreground: var(--wq-accent-fg);
+  --color-destructive:      var(--wq-destructive);
+  --color-destructive-foreground: var(--wq-destructive-fg);
+  --color-input:            var(--wq-bg-input);
+  --color-ring:             var(--wq-border-focus);
+  --color-success:          var(--wq-success);
+  --color-warning:          var(--wq-warning);
+  --radius:                 var(--wq-radius);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DARK THEME — OVERRIDES ON .dark
+   ═══════════════════════════════════════════════════════════════════════════ */
+.dark {
+  /* ── Backgrounds ── */
+  --wq-bg:           #000000;   /* Deep pure black background for dark theme */
+  --wq-bg-surface:   #09090b;   /* Cards, panels                         */
+  --wq-bg-elevated:  #0f0f12;   /* Sidebars, inline sections             */
+  --wq-bg-overlay:   #0a0a0c;   /* Modals, popovers                      */
+  --wq-bg-input:     #070709;   /* Form inputs                           */
+
+  /* ── Foreground / Text ── */
+  --wq-fg:           #f4f4f7;   /* Primary body text — crisp white           */
+  --wq-fg-muted:     #9494a8;   /* Secondary text                             */
+  --wq-fg-subtle:    #636378;   /* Placeholders, hints, timestamps            */
+  --wq-fg-inverse:   #000000;   /* Text on accent buttons                     */
+
+  /* ── Borders ── */
+  --wq-border:       #1e1e2d;   /* Default dividers, card borders             */
+  --wq-border-strong:#323246;   /* Input borders, stronger lines              */
+  --wq-border-focus: #00d09c;   /* Focus rings                                */
+
+  /* ── Brand Accent — Emerald (same) ── */
+  --wq-accent:       #00d09c;
+  --wq-accent-hover: #00e6ab;
+  --wq-accent-press: #00b888;
+  --wq-accent-fg:    #000000;
+  --wq-accent-subtle:rgba(0, 208, 156, 0.10);
+  --wq-accent-ring:  rgba(0, 208, 156, 0.25);
+
+  /* ── Semantic Colors ── */
+  --wq-destructive:  #f87171;
+  --wq-destructive-fg: #000000;
+  --wq-destructive-subtle: rgba(248, 113, 113, 0.10);
+  --wq-warning:      #fbbf24;
+  --wq-warning-subtle: rgba(251, 191, 36, 0.10);
+  --wq-success:      #34d399;
+  --wq-success-subtle: rgba(52, 211, 153, 0.10);
+  --wq-info:         #38bdf8;
+  --wq-info-subtle:  rgba(56, 189, 248, 0.10);
+
+  /* ── Shadows ── */
+  --wq-shadow-xs:    0 1px 2px rgba(0,0,0,0.60);
+  --wq-shadow-sm:    0 2px 6px rgba(0,0,0,0.70), 0 1px 2px rgba(0,0,0,0.50);
+  --wq-shadow-md:    0 4px 16px rgba(0,0,0,0.80), 0 2px 4px rgba(0,0,0,0.60);
+  --wq-shadow-lg:    0 8px 32px rgba(0,0,0,0.90), 0 4px 8px rgba(0,0,0,0.70);
+  --wq-shadow-xl:    0 16px 48px rgba(0,0,0,0.95), 0 8px 16px rgba(0,0,0,0.80);
+
+  /* ── Glass ── */
+  --wq-glass-bg:     rgba(0, 0, 0, 0.90);
+  --wq-glass-border: rgba(30, 30, 45, 0.80);
+
+  /* ── Navbar ── */
+  --wq-nav-bg:       rgba(0, 0, 0, 0.95);
+  --wq-nav-border:   rgba(30, 30, 45, 0.80);
+
+  /* ── Scrollbar ── */
+  --wq-scrollbar-thumb: #3a3a52;
+  --wq-scrollbar-thumb-hover: #52526a;
+
+  /* ── Tailwind bridge ── */
+  --color-background:       var(--wq-bg);
+  --color-foreground:       var(--wq-fg);
+  --color-border:           var(--wq-border);
+  --color-card:             var(--wq-bg-surface);
+  --color-card-foreground:  var(--wq-fg);
+  --color-popover:          var(--wq-bg-overlay);
+  --color-popover-foreground: var(--wq-fg);
+  --color-primary:          var(--wq-accent);
+  --color-primary-foreground: var(--wq-accent-fg);
+  --color-secondary:        var(--wq-bg-elevated);
+  --color-secondary-foreground: var(--wq-fg);
+  --color-muted:            var(--wq-bg-elevated);
+  --color-muted-foreground: var(--wq-fg-muted);
+  --color-accent:           var(--wq-accent);
+  --color-accent-foreground: var(--wq-accent-fg);
+  --color-destructive:      var(--wq-destructive);
+  --color-destructive-foreground: var(--wq-fg-inverse);
+  --color-input:            var(--wq-bg-input);
+  --color-ring:             var(--wq-border-focus);
+  --color-success:          var(--wq-success);
+  --color-warning:          var(--wq-warning);
+}
+
+@theme {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --radius: 10px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-color;
+  border-color: var(--wq-border);
+}
+
+html {
+  font-family: var(--wq-font-sans);
+  color-scheme: light;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  tab-size: 2;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--wq-bg);
+  color: var(--wq-fg);
+  font-family: var(--wq-font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+#root {
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+img, video, iframe, canvas, svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Glass Surfaces */
+.glass {
+  background: var(--wq-nav-bg);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border-bottom: 1px solid var(--wq-nav-border);
+  transform: translateZ(0);
+}
+
+.glass-card {
+  background: var(--wq-glass-bg) !important;
+  backdrop-filter: var(--wq-glass-blur);
+  -webkit-backdrop-filter: var(--wq-glass-blur);
+  border: 1px solid var(--wq-glass-border) !important;
+  box-shadow: var(--wq-shadow-md) !important;
+}
+
+/* Card Styles */
+.card-base {
+  background: var(--wq-bg-surface);
+  border: 1px solid var(--wq-border);
+  border-radius: var(--wq-radius);
+  box-shadow: var(--wq-shadow-xs);
+  transition:
+    box-shadow var(--wq-transition-slow),
+    border-color var(--wq-transition-slow),
+    transform var(--wq-transition);
+}
+
+.card-base:hover {
+  box-shadow: var(--wq-shadow-md);
+  border-color: var(--wq-accent);
+  transform: translateY(-1px);
+}
+
+.card-premium {
+  background: var(--wq-bg-surface);
+  border: 1px solid var(--wq-border);
+  border-radius: var(--wq-radius);
+  box-shadow: var(--wq-shadow-sm);
+  transition:
+    box-shadow var(--wq-transition-slow),
+    border-color var(--wq-transition-slow),
+    transform var(--wq-transition);
+}
+
+.card-premium:hover {
+  box-shadow: var(--wq-shadow-lg);
+  border-color: var(--wq-accent);
+  transform: translateY(-2px);
+}
+
+.dark body {
+  background-color: #000000;
+}
+
+/* ─── HIDE SCROLLBARS EFFICIENTLY WITHOUT UNIVERSAL TREE TRAVERSAL ─── */
+html, body, div, main, nav, section, aside, ul {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+div::-webkit-scrollbar,
+main::-webkit-scrollbar,
+nav::-webkit-scrollbar,
+section::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+

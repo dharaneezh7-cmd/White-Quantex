@@ -18,6 +18,7 @@ import {
   Eye,
   MessageSquare,
   Sparkles,
+  Radio,
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { VerificationBadge } from "../components/shared/VerificationBadge"
@@ -120,6 +121,14 @@ export default function LandingPage() {
               <Rocket className="h-4 w-4" />
               <span>Register a Venture</span>
               <ArrowRight className="h-4 w-4" />
+            </Button>
+            <Button
+              size="lg"
+              onClick={() => navigate("/post")}
+              className="h-12 px-7 rounded-none bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-zinc-950 dark:hover:bg-slate-100 shadow-md text-sm font-bold cursor-pointer inline-flex items-center gap-2"
+            >
+              <Radio className="h-4 w-4 text-[#00d09c]" />
+              <span>Post to Community</span>
             </Button>
             <Button
               variant="outline"

@@ -57,17 +57,37 @@ router.get("/", async (req, res) => {
 
     const formattedPosts = posts.map((p) => {
       const pid = p._id.toString()
+      const isOrg = p.authorAccountType === "COMPANY" || p.authorAccountType === "VENTURE" || p.authorType === "COMPANY" || p.authorType === "VENTURE"
+      let resolvedDisplayName = p.authorName
+      if (isOrg) {
+        if (p.companyId && !p.companyId.startsWith("comp-") && !p.companyId.startsWith("wq-")) {
+          resolvedDisplayName = p.companyId
+        } else if (p.authorHeadline && p.authorHeadline.includes("@")) {
+          const match = p.authorHeadline.match(/@\s*([^,·•|]+)/)
+          if (match && match[1]?.trim()) {
+            resolvedDisplayName = match[1].trim()
+          }
+        }
+      }
       return {
         id: pid,
         wqAuthorId: p.wqAuthorId,
         author: {
           wqUserId: p.wqAuthorId,
-          displayName: p.authorName,
+          displayName: resolvedDisplayName,
           username: p.authorUsername || "user",
           avatarUrl: p.authorAvatarUrl || "",
           headline: p.authorHeadline || "Verified Member",
           verificationLevel: p.authorVerificationLevel || "GOLD",
+          accountType: p.authorAccountType || "INDIVIDUAL",
+          authorType: p.authorType || (p.authorAccountType === "COMPANY" ? "COMPANY" : p.authorAccountType === "VENTURE" ? "VENTURE" : "USER"),
+          companyId: p.companyId,
+          ticker: p.ticker,
         },
+        authorAccountType: p.authorAccountType || "INDIVIDUAL",
+        authorType: p.authorType || (p.authorAccountType === "COMPANY" ? "COMPANY" : p.authorAccountType === "VENTURE" ? "VENTURE" : "USER"),
+        companyId: p.companyId,
+        ticker: p.ticker,
         content: p.content,
         mediaUrls: p.mediaUrls || [],
         videoUrl: p.videoUrl,
@@ -120,17 +140,38 @@ router.get("/:id", async (req, res) => {
       Bookmark.findOne({ wqUserId, postId: post._id.toString() }),
     ])
 
+    const isOrg = post.authorAccountType === "COMPANY" || post.authorAccountType === "VENTURE" || post.authorType === "COMPANY" || post.authorType === "VENTURE"
+    let resolvedDisplayName = post.authorName
+    if (isOrg) {
+      if (post.companyId && !post.companyId.startsWith("comp-") && !post.companyId.startsWith("wq-")) {
+        resolvedDisplayName = post.companyId
+      } else if (post.authorHeadline && post.authorHeadline.includes("@")) {
+        const match = post.authorHeadline.match(/@\s*([^,·•|]+)/)
+        if (match && match[1]?.trim()) {
+          resolvedDisplayName = match[1].trim()
+        }
+      }
+    }
+
     const formatted = {
       id: post._id.toString(),
       wqAuthorId: post.wqAuthorId,
-      author: {
-        wqUserId: post.wqAuthorId,
-        displayName: post.authorName,
-        username: post.authorUsername || "user",
-        avatarUrl: post.authorAvatarUrl || "",
-        headline: post.authorHeadline || "Verified Member",
-        verificationLevel: post.authorVerificationLevel || "GOLD",
-      },
+        author: {
+          wqUserId: post.wqAuthorId,
+          displayName: resolvedDisplayName,
+          username: post.authorUsername || "user",
+          avatarUrl: post.authorAvatarUrl || "",
+          headline: post.authorHeadline || "Verified Member",
+          verificationLevel: post.authorVerificationLevel || "GOLD",
+          accountType: post.authorAccountType || "INDIVIDUAL",
+          authorType: post.authorType || (post.authorAccountType === "COMPANY" ? "COMPANY" : post.authorAccountType === "VENTURE" ? "VENTURE" : "USER"),
+          companyId: post.companyId,
+          ticker: post.ticker,
+        },
+        authorAccountType: post.authorAccountType || "INDIVIDUAL",
+        authorType: post.authorType || (post.authorAccountType === "COMPANY" ? "COMPANY" : post.authorAccountType === "VENTURE" ? "VENTURE" : "USER"),
+        companyId: post.companyId,
+        ticker: post.ticker,
       content: post.content,
       mediaUrls: post.mediaUrls || [],
       videoUrl: post.videoUrl,
@@ -163,11 +204,30 @@ router.get("/:id", async (req, res) => {
 // POST /api/posts - Create Post
 router.post("/", async (req, res) => {
   try {
-    const { content, mediaUrls, videoUrl, postType, visibility, communityId } = req.body
+    const {
+      content,
+      mediaUrls,
+      videoUrl,
+      postType,
+      visibility,
+      communityId,
+      authorAccountType: bodyAccountType,
+      authorType: bodyAuthorType,
+      authorRole: bodyAuthorRole,
+      authorName: bodyAuthorName,
+      authorUsername: bodyAuthorUsername,
+      authorHeadline: bodyAuthorHeadline,
+      companyId,
+      ticker,
+    } = req.body
+
     const wqAuthorId = req.headers["x-wq-user-id"] || "wq-uuid-demo-author"
-    const authorName = req.headers["x-wq-user-name"] || "Alexander Vance"
-    const authorUsername = req.headers["x-wq-user-username"] || "alexvance"
-    const authorHeadline = req.headers["x-wq-user-headline"] || "Managing Partner · Quantex Sovereign Capital"
+    const authorName = bodyAuthorName || req.headers["x-wq-user-name"] || "Alexander Vance"
+    const authorUsername = bodyAuthorUsername || req.headers["x-wq-user-username"] || "alexvance"
+    const authorHeadline = bodyAuthorHeadline || req.headers["x-wq-user-headline"] || "Managing Partner · Quantex Sovereign Capital"
+    const authorAccountType = bodyAccountType || req.headers["x-wq-user-account-type"] || "INDIVIDUAL"
+    const authorType = bodyAuthorType || (authorAccountType === "COMPANY" ? "COMPANY" : authorAccountType === "VENTURE" ? "VENTURE" : "USER")
+    const authorRole = bodyAuthorRole || (authorAccountType === "COMPANY" ? "CORPORATE" : authorAccountType === "VENTURE" ? "INVESTOR" : "FOUNDER")
 
     if (!content || !content.trim()) {
       return res.status(400).json({ success: false, message: "Post content is required." })
@@ -181,8 +241,12 @@ router.post("/", async (req, res) => {
       authorName,
       authorUsername,
       authorHeadline,
-      authorRole: "INVESTOR",
+      authorRole,
       authorVerificationLevel: "PLATINUM",
+      authorAccountType,
+      authorType,
+      companyId: companyId || null,
+      ticker: ticker || null,
       content: content.trim(),
       mediaUrls: mediaUrls || [],
       videoUrl,
@@ -208,7 +272,15 @@ router.post("/", async (req, res) => {
         avatarUrl: post.authorAvatarUrl || "",
         headline: post.authorHeadline,
         verificationLevel: post.authorVerificationLevel,
+        accountType: post.authorAccountType,
+        authorType: post.authorType,
+        companyId: post.companyId,
+        ticker: post.ticker,
       },
+      authorAccountType: post.authorAccountType,
+      authorType: post.authorType,
+      companyId: post.companyId,
+      ticker: post.ticker,
       content: post.content,
       mediaUrls: post.mediaUrls,
       videoUrl: post.videoUrl,

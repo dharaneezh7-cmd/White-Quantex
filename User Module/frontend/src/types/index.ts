@@ -307,6 +307,11 @@ export interface Post {
   id: string
   wqAuthorId: string
   author: PostAuthor
+  authorType?: "COMPANY" | "VENTURE" | "USER" | string
+  authorAccountType?: "COMPANY" | "VENTURE" | "INDIVIDUAL" | string
+  companyId?: string
+  ticker?: string
+  impactMetric?: string
   content: string
   mediaUrls: string[]
   videoUrl?: string
@@ -333,6 +338,11 @@ export interface PostAuthor {
   headline: string
   avatarUrl: string
   verificationLevel: VerificationLevel
+  accountType?: "COMPANY" | "VENTURE" | "INDIVIDUAL" | "CORPORATE_ISSUER" | "VENTURE_CAPITAL" | "company" | "venture" | "individual" | string
+  authorType?: "COMPANY" | "VENTURE" | "USER" | string
+  role?: string
+  companyId?: string
+  ticker?: string
 }
 
 export interface Comment {

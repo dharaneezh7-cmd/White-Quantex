@@ -2,6 +2,7 @@ export const NAV_LINKS = [
   { label: "Home", href: "/" },
   { label: "About", href: "/about" },
   { label: "Hub", href: "/register" },
+  { label: "Post Update", href: "/post" },
 ]
 
 export const FOOTER_LINKS = [

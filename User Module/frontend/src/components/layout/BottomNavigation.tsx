@@ -7,7 +7,7 @@ export function BottomNavigation() {
   const location = useLocation()
   const isCommunity = location.pathname.startsWith("/community") || location.pathname === "/" || location.pathname === "/home"
 
-  const handleNavTab = (tab: "home" | "communities" | "people") => {
+  const handleNavTab = (tab: "home" | "communities" | "people" | "news") => {
     if (window.location.pathname.startsWith("/community")) {
       window.dispatchEvent(new CustomEvent("set-community-tab", { detail: tab }))
     } else {

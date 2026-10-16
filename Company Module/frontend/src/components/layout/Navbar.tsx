@@ -13,6 +13,7 @@ import {
   Building2,
   Rocket,
   ArrowRight,
+  Radio,
 } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { NAV_LINKS } from "../../constants"
@@ -134,6 +135,15 @@ export const Navbar = React.memo(function Navbar() {
             <span>User Portal</span>
             <ExternalLink className="h-3 w-3" />
           </a>
+
+          {/* Post Update Action */}
+          <Link
+            to="/post"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#00d09c]/10 text-[#00a87e] dark:text-[#00d09c] border border-[#00d09c]/30 hover:bg-[#00d09c]/20 transition-all cursor-pointer"
+          >
+            <Radio className="h-3.5 w-3.5" />
+            <span>Post Update</span>
+          </Link>
 
           {/* Sign In Link */}
           <Link

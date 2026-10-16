@@ -5,8 +5,14 @@ export default [
   index("app/page.tsx"),
 
   // Registration Routes
+  route("register", "app/register/page.tsx"),
   route("register/company", "app/register/company/page.tsx"),
   route("register/venture", "app/register/venture/page.tsx"),
+
+  // Company & Venture Post Publisher
+  route("post", "app/post/page.tsx"),
+  route("publisher", "app/post/page.tsx"),
+  route("community-post", "app/post/page.tsx"),
 
   // Success
   route("registration-success", "app/registration-success/page.tsx"),

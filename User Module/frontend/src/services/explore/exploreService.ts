@@ -1,5 +1,16 @@
 import { springApi } from "@/services/api/client"
 import { ApiResponse, PagedResponse } from "@/types"
+import {
+  type VentureOpportunity,
+  MOCK_VENTURE_OPPORTUNITIES,
+  REGISTERED_VENTURES_LIST,
+  VENTURE_POSITIONS,
+  VENTURE_ORDERS,
+  VENTURE_NEWS,
+  getRegisteredVentures,
+  getVenturesOverview,
+  getCompanyInvestmentDetails,
+} from "./ventureData"
 
 export interface CategoryCompany {
   id: string
@@ -20,6 +31,11 @@ export interface CategoryCompany {
   percentFunded?: number
   volume?: string
   cik?: string
+  minInvestment?: string
+  minInvestmentNum?: number
+  fundingPurpose?: string
+  targetRaise?: string
+  roundType?: string
 }
 
 export interface CompanySummary {
@@ -53,6 +69,15 @@ export interface CompanySummary {
   investedToday?: string
   allocationPercent?: number
   tradingVolumeToday?: string
+  minInvestment?: string
+  minInvestmentNum?: number
+  fundingPurpose?: string
+  targetRaise?: string
+  targetRaiseNum?: number
+  raisedAmount?: string
+  raisedAmountNum?: number
+  roundType?: string
+  securityType?: string
 }
 
 export interface UpcomingCompany {
@@ -193,50 +218,316 @@ export interface CompanySearchParams {
 }
 
 export const exploreService = {
+  // ── Explore Overview (Corporate Companies) ──────────────────────────────
   async getOverview(): Promise<ExploreOverview> {
     const res = await springApi.get<ApiResponse<ExploreOverview>>("/explore/overview")
     return res.data.data
   },
 
+  // ── Explore Companies (Corporate Issuers) ───────────────────────────────
   async getCompanies(params: CompanySearchParams = {}): Promise<PagedResponse<CompanySummary>> {
-    const res = await springApi.get<ApiResponse<PagedResponse<CompanySummary>>>("/explore/companies", {
-      params,
-    })
-    return res.data.data
+    let result: PagedResponse<CompanySummary>
+    try {
+      const res = await springApi.get<ApiResponse<PagedResponse<CompanySummary>>>("/explore/companies", {
+        params,
+      })
+      result = res.data.data
+    } catch {
+      result = {
+        content: [],
+        totalElements: 0,
+        totalPages: 0,
+        size: params.size || 25,
+        number: params.page || 0,
+        first: true,
+        last: true,
+      }
+    }
+
+    // Merge any dynamically registered corporate companies from Company Module (localStorage)
+    if (typeof window !== "undefined") {
+      try {
+        const savedCompaniesStr = localStorage.getItem("wq_registered_companies")
+        if (savedCompaniesStr) {
+          const savedCompanies: CompanySummary[] = JSON.parse(savedCompaniesStr)
+          if (Array.isArray(savedCompanies) && savedCompanies.length > 0) {
+            const existingIds = new Set(result.content.map((c) => c.id))
+            const existingTickers = new Set(result.content.map((c) => c.ticker.toUpperCase()))
+            const newEntries = savedCompanies.filter(
+              (c) => !existingIds.has(c.id) && !existingTickers.has(c.ticker.toUpperCase())
+            )
+            result.content = [...newEntries, ...result.content]
+            result.totalElements += newEntries.length
+          }
+        }
+      } catch {}
+    }
+
+    return result
   },
 
+  // ── Company / Venture Dossier Detail ─────────────────────────────────────
   async getCompanyById(id: string): Promise<CompanySummary> {
-    const res = await springApi.get<ApiResponse<CompanySummary>>(`/explore/companies/${id}`)
-    return res.data.data
-  },
+    try {
+      const res = await springApi.get<ApiResponse<CompanySummary>>(`/explore/companies/${encodeURIComponent(id)}`)
+      if (res.data?.data) {
+        return res.data.data
+      }
+    } catch {
+      // Fallback
+    }
 
-  async getPositions(): Promise<CorporatePosition[]> {
-    const res = await springApi.get<ApiResponse<CorporatePosition[]>>("/explore/positions")
-    return res.data.data
-  },
+    const cleanId = id.toUpperCase().trim()
 
-  async getOrders(status = "ALL"): Promise<CorporateOrder[]> {
-    const res = await springApi.get<ApiResponse<CorporateOrder[]>>(`/explore/orders?status=${status}`)
-    return res.data.data
-  },
-
-  async getNews(ticker = "ALL", category = "ALL"): Promise<CorporateNews[]> {
-    const res = await springApi.get<ApiResponse<CorporateNews[]>>(
-      `/explore/news?ticker=${ticker}&category=${category}`
+    // 1. Check in REGISTERED_VENTURES_LIST
+    const venture = REGISTERED_VENTURES_LIST.find(
+      (v) =>
+        v.id === id ||
+        v.ticker.toUpperCase() === cleanId ||
+        v.cik.toUpperCase() === cleanId ||
+        v.name.toLowerCase() === id.toLowerCase() ||
+        v.shortName.toLowerCase() === id.toLowerCase()
     )
-    return res.data.data
+    if (venture) return venture
+
+    // 2. Check in MOCK_VENTURE_OPPORTUNITIES
+    const opp = MOCK_VENTURE_OPPORTUNITIES.find(
+      (o) => o.id === id || o.ticker.toUpperCase() === cleanId
+    )
+    if (opp) {
+      return {
+        id: opp.id,
+        ticker: opp.ticker,
+        name: opp.name,
+        shortName: opp.shortName,
+        legalEntity: opp.legalEntity,
+        cik: `CIK-0002100${opp.ticker.length}`,
+        sector: opp.sector,
+        subIndustry: opp.subIndustry,
+        headquarters: opp.headquarters,
+        region: "North America",
+        foundedYear: 2023,
+        ceo: opp.ceo,
+        employees: 30,
+        valuation: opp.valuation,
+        valuationNum: opp.valuationNum,
+        annualRevenue: `$${(opp.valuationNum * 0.15 / 1000000).toFixed(1)}M ARR`,
+        annualRevenueNum: Math.round(opp.valuationNum * 0.15),
+        verificationLevel: opp.verificationLevel,
+        trustScore: 95,
+        description: opp.fundingPurpose,
+        logoColor: opp.logoColor,
+        status: opp.roundType,
+        exchangeTier: "Tier-1 Venture Syndicate",
+        change24h: "+12.0%",
+        changePercent: 12.0,
+        isPositive: true,
+        marketCapGainLoss: "+$8.5M",
+        investedToday: "+$1.2M Inflow",
+        allocationPercent: opp.percentFunded,
+        tradingVolumeToday: "$3.5M Vol",
+        minInvestment: opp.minInvestment,
+        minInvestmentNum: opp.minInvestmentNum,
+        fundingPurpose: opp.fundingPurpose,
+        targetRaise: opp.targetRaise,
+        targetRaiseNum: opp.targetRaiseNum,
+        raisedAmount: opp.raisedAmount,
+        raisedAmountNum: opp.raisedAmountNum,
+        roundType: opp.roundType,
+        securityType: opp.securityType,
+      }
+    }
+
+    // 3. Check browser dynamic registrations
+    if (typeof window !== "undefined") {
+      try {
+        const savedVenturesStr = localStorage.getItem("wq_registered_ventures")
+        if (savedVenturesStr) {
+          const savedVentures: CompanySummary[] = JSON.parse(savedVenturesStr)
+          const matched = savedVentures.find(
+            (v) =>
+              v.id === id ||
+              v.ticker.toUpperCase() === cleanId ||
+              v.cik.toUpperCase() === cleanId ||
+              v.name.toLowerCase() === id.toLowerCase()
+          )
+          if (matched) return matched
+        }
+        const savedCompaniesStr = localStorage.getItem("wq_registered_companies")
+        if (savedCompaniesStr) {
+          const savedCompanies: CompanySummary[] = JSON.parse(savedCompaniesStr)
+          const matched = savedCompanies.find(
+            (c) =>
+              c.id === id ||
+              c.ticker.toUpperCase() === cleanId ||
+              c.cik.toUpperCase() === cleanId ||
+              c.name.toLowerCase() === id.toLowerCase()
+          )
+          if (matched) return matched
+        }
+      } catch {}
+    }
+
+    throw new Error(`Corporate/Venture issuer not found: ${id}`)
   },
 
+  // ── Ventures & Start-ups Directory (Completely Independent from Companies) ──
+  async getVentures(params: CompanySearchParams = {}): Promise<PagedResponse<CompanySummary>> {
+    try {
+      const res = await springApi.get<ApiResponse<PagedResponse<CompanySummary>>>("/explore/ventures", {
+        params,
+      })
+      if (res.data?.data?.content && res.data.data.content.length > 0) {
+        return res.data.data
+      }
+    } catch {
+      // Fallback
+    }
+    return getRegisteredVentures(params)
+  },
+
+  // ── Ventures Overview Metrics ────────────────────────────────────────────
+  async getVenturesOverview(): Promise<ExploreOverview> {
+    try {
+      const res = await springApi.get<ApiResponse<ExploreOverview>>("/explore/ventures/overview")
+      if (res.data?.data) {
+        return res.data.data
+      }
+    } catch {
+      // Fallback
+    }
+    return getVenturesOverview()
+  },
+
+  // ── Ventures Portfolio Positions ─────────────────────────────────────────
+  async getVenturePositions(): Promise<CorporatePosition[]> {
+    try {
+      const res = await springApi.get<ApiResponse<CorporatePosition[]>>("/explore/ventures/positions")
+      if (res.data?.data && res.data.data.length > 0) {
+        return res.data.data
+      }
+    } catch {
+      // Fallback to real user investments in localStorage
+    }
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("wq_venture_positions")
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          if (Array.isArray(parsed)) return parsed
+        }
+      } catch {}
+    }
+    return []
+  },
+
+  // ── Ventures Order Book ──────────────────────────────────────────────────
+  async getVentureOrders(status = "ALL"): Promise<CorporateOrder[]> {
+    try {
+      const res = await springApi.get<ApiResponse<CorporateOrder[]>>(`/explore/ventures/orders?status=${status}`)
+      if (res.data?.data && res.data.data.length > 0) {
+        return res.data.data
+      }
+    } catch {
+      // Fallback to real user orders in localStorage
+    }
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("wq_venture_orders")
+        if (saved) {
+          const parsed: CorporateOrder[] = JSON.parse(saved)
+          if (Array.isArray(parsed)) {
+            return status === "ALL" ? parsed : parsed.filter((o) => o.status === status)
+          }
+        }
+      } catch {}
+    }
+    return []
+  },
+
+  // ── Ventures News & Notifications ────────────────────────────────────────
+  async getVentureNews(ticker = "ALL", category = "ALL"): Promise<CorporateNews[]> {
+    try {
+      const res = await springApi.get<ApiResponse<CorporateNews[]>>(
+        `/explore/ventures/news?ticker=${ticker}&category=${category}`
+      )
+      if (res.data?.data && res.data.data.length > 0) {
+        return res.data.data
+      }
+    } catch {
+      // Fallback
+    }
+    return []
+  },
+
+  // ── Corporate Positions (Explore) ────────────────────────────────────────
+  async getPositions(): Promise<CorporatePosition[]> {
+    try {
+      const res = await springApi.get<ApiResponse<CorporatePosition[]>>("/explore/positions")
+      if (res.data?.data) {
+        return res.data.data
+      }
+    } catch {}
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("wq_corporate_positions")
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          if (Array.isArray(parsed)) return parsed
+        }
+      } catch {}
+    }
+    return []
+  },
+
+  // ── Corporate Orders (Explore) ───────────────────────────────────────────
+  async getOrders(status = "ALL"): Promise<CorporateOrder[]> {
+    try {
+      const res = await springApi.get<ApiResponse<CorporateOrder[]>>(`/explore/orders?status=${status}`)
+      if (res.data?.data) {
+        return res.data.data
+      }
+    } catch {}
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("wq_corporate_orders")
+        if (saved) {
+          const parsed: CorporateOrder[] = JSON.parse(saved)
+          if (Array.isArray(parsed)) {
+            return status === "ALL" ? parsed : parsed.filter((o) => o.status === status)
+          }
+        }
+      } catch {}
+    }
+    return []
+  },
+
+  // ── Corporate News (Explore) ─────────────────────────────────────────────
+  async getNews(ticker = "ALL", category = "ALL"): Promise<CorporateNews[]> {
+    try {
+      const res = await springApi.get<ApiResponse<CorporateNews[]>>(
+        `/explore/news?ticker=${ticker}&category=${category}`
+      )
+      if (res.data?.data) {
+        return res.data.data
+      }
+    } catch {}
+    return []
+  },
+
+  // ── Upcoming Companies ───────────────────────────────────────────────────
   async getUpcomingCompanies(): Promise<UpcomingCompany[]> {
     const res = await springApi.get<ApiResponse<UpcomingCompany[]>>("/explore/upcoming")
     return res.data.data
   },
 
+  // ── WQ Recommendations ───────────────────────────────────────────────────
   async getRecommendations(): Promise<WqRecommendation[]> {
     const res = await springApi.get<ApiResponse<WqRecommendation[]>>("/explore/recommendations")
     return res.data.data
   },
 
+  // ── Mutual Investment Schemes ────────────────────────────────────────────
   async getMutualSchemes(): Promise<MutualScheme[]> {
     const res = await springApi.get<ApiResponse<MutualScheme[]>>("/explore/schemes")
     return res.data.data
@@ -254,4 +545,28 @@ export const exploreService = {
       // Non-blocking telemetry
     }
   },
+
+  async getVentureOpportunities(): Promise<VentureOpportunity[]> {
+    try {
+      const res = await springApi.get<ApiResponse<VentureOpportunity[]>>("/explore/ventures")
+      if (res.data?.data && res.data.data.length > 0) {
+        return res.data.data
+      }
+    } catch {
+      // Fallback
+    }
+    return MOCK_VENTURE_OPPORTUNITIES
+  },
 }
+
+export type { VentureOpportunity } from "./ventureData"
+export {
+  MOCK_VENTURE_OPPORTUNITIES,
+  REGISTERED_VENTURES_LIST,
+  VENTURE_POSITIONS,
+  VENTURE_ORDERS,
+  VENTURE_NEWS,
+  getRegisteredVentures,
+  getVenturesOverview,
+  getCompanyInvestmentDetails,
+} from "./ventureData"

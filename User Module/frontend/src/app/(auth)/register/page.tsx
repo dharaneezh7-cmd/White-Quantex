@@ -14,6 +14,7 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [termsAccepted, setTermsAccepted] = useState(false)
 
   const setUser = useAuthStore((s) => s.setUser)
   const navigate = useNavigate()
@@ -103,6 +104,11 @@ export default function RegisterPage() {
       return
     }
 
+    if (!termsAccepted) {
+      setError("Please accept the Terms of Service and Privacy Notice to proceed.")
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -115,7 +121,7 @@ export default function RegisterPage() {
       })
 
       setUser(user)
-      navigate("/dashboard")
+      navigate(`/verify-otp?email=${encodeURIComponent(trimmedEmail)}`)
     } catch (err: any) {
       setError(
         err.response?.data?.message ||
@@ -300,6 +306,29 @@ export default function RegisterPage() {
                 Passwords match.
               </p>
             )}
+          </div>
+
+          {/* Terms & Privacy Checkbox */}
+          <div className="pt-1">
+            <label className="flex items-start gap-2.5 text-xs text-[var(--wq-fg-muted)] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+                className="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+              />
+              <span className="leading-relaxed">
+                I agree to the{" "}
+                <Link to="/terms" className="text-[#00d09c] hover:underline font-semibold">
+                  Terms of Service
+                </Link>{" "}
+                and acknowledge the{" "}
+                <Link to="/privacy" className="text-[#00d09c] hover:underline font-semibold">
+                  Privacy Notice
+                </Link>
+                .
+              </span>
+            </label>
           </div>
 
           {/* Submit */}

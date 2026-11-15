@@ -14,7 +14,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-dvh flex-col bg-[var(--wq-bg)] text-[var(--wq-fg)]">
           <PageProgressBar />
           <Navbar />
-          <main className="flex-1 pt-16 pb-16 md:pb-0 flex flex-col">
+          <main className="w-full flex-1 pt-16 pb-16 md:pb-0 flex flex-col">
             <PageTransitionWrapper>{children}</PageTransitionWrapper>
           </main>
           <Footer />

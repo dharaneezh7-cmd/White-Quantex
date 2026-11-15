@@ -1,5 +1,5 @@
 import React, { useState } from "react"
-import { MapPin, Users, Check, ArrowUpRight } from "lucide-react"
+import { MapPin, Users, Check } from "lucide-react"
 import { useNavigate } from "react-router"
 import { motion } from "framer-motion"
 import { formatNumber, getInitials, cn } from "../../lib/utils"
@@ -10,23 +10,42 @@ import { VerificationBadge } from "./VerificationBadge"
 interface InvestorCardProps {
   investor?: any
   index?: number
+  isFollowing?: boolean
+  onToggleFollow?: (id: string) => void
+  onCardClick?: (investor: any) => void
 }
 
-export const InvestorCard = React.memo(function InvestorCard({ investor, index = 0 }: InvestorCardProps) {
+export const InvestorCard = React.memo(function InvestorCard({
+  investor,
+  index = 0,
+  isFollowing: propIsFollowing,
+  onToggleFollow,
+  onCardClick,
+}: InvestorCardProps) {
   const navigate = useNavigate()
-  const investorId = investor?.id ? String(investor.id) : "u-investor-1"
+  const investorId = investor?.id ? String(investor.id) : (investor?.wqUserId ? String(investor.wqUserId) : "u-investor-1")
   const name = investor?.name || `${investor?.firstName || "Investor"} ${investor?.lastName || ""}`.trim()
-  const followersCount = investor?.followersCount ?? 12800
-  const [isFollowing, setIsFollowing] = useState(Boolean(investor?.isFollowing))
+  const [localIsFollowing, setLocalIsFollowing] = useState(Boolean(investor?.isFollowing))
+  const isFollowing = typeof propIsFollowing === "boolean" ? propIsFollowing : localIsFollowing
+  const baseFollowers = investor?.followersCount ?? 12800
+  const followersCount = baseFollowers
 
   const handleFollowToggle = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setIsFollowing((prev) => !prev)
+    if (onToggleFollow) {
+      onToggleFollow(investorId)
+    } else {
+      setLocalIsFollowing((prev) => !prev)
+    }
   }
 
   const handleCardClick = () => {
-    navigate(`/investors/${investorId}`)
+    if (onCardClick) {
+      onCardClick(investor)
+    } else {
+      navigate(`/profile/${encodeURIComponent(investor?.username || investorId)}`)
+    }
   }
 
   return (
@@ -43,7 +62,7 @@ export const InvestorCard = React.memo(function InvestorCard({ investor, index =
         <div>
           <div className="flex items-start gap-3">
             <Avatar className="h-12 w-12 ring-2 ring-slate-100 dark:ring-zinc-800 shrink-0 rounded-[10px]">
-              <AvatarImage src={investor?.avatarUrl} alt={name} className="rounded-[10px] object-cover" />
+              <AvatarImage src={investor?.avatarUrl || investor?.avatar} alt={name} className="rounded-[10px] object-cover" />
               <AvatarFallback className="bg-amber-50 dark:bg-amber-950/40 text-sm font-semibold text-amber-700 dark:text-amber-400 font-bold rounded-[10px]">
                 {getInitials(name)}
               </AvatarFallback>
@@ -55,7 +74,7 @@ export const InvestorCard = React.memo(function InvestorCard({ investor, index =
                 </h3>
                 {investor?.verificationLevel && <VerificationBadge level={investor.verificationLevel} />}
               </div>
-              <p className="mt-0.5 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">{investor?.headline || investor?.bio || "Ecosystem Investor"}</p>
+              <p className="mt-0.5 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">{investor?.headline || investor?.bio || ""}</p>
             </div>
           </div>
 

@@ -16,4 +16,6 @@ public interface CorporatePositionRepository extends JpaRepository<CorporatePosi
 
     @Query("SELECT p FROM CorporatePositionEntity p JOIN FETCH p.company c WHERE p.userId = :userId ORDER BY p.currentValue DESC")
     List<CorporatePositionEntity> findByUserId(@Param("userId") UUID userId);
+
+    java.util.Optional<CorporatePositionEntity> findByUserIdAndCompanyId(UUID userId, UUID companyId);
 }

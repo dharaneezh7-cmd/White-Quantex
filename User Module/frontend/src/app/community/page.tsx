@@ -5,7 +5,7 @@ import {
   ShieldCheck, CheckCircle2, UserPlus, MessageCircle, ArrowUpRight, Filter,
   PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Menu, X, Image as ImageIcon, Compass,
   Send, Loader2, Building2, ExternalLink, Copy, Check, Briefcase, Globe, Calendar, Radio,
-  Newspaper, Clock, ArrowRight, Rocket, User
+  Newspaper, Clock, ArrowRight, Rocket, User, Pencil, Trash2, AlertCircle, RefreshCw, Zap
 } from "lucide-react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useNavigate, useSearchParams } from "react-router"
@@ -24,6 +24,25 @@ import { exploreService, type CorporateNews } from "../../services/explore/explo
 import { getCompanyLogoStyle } from "../explore/utils/exploreUtils"
 import { formatNumber, getInitials, cn } from "../../lib/utils"
 import type { Post, Comment, Community } from "../../types"
+
+// User-friendly creation timestamp formatter
+function formatPostTimestamp(dateStr?: string): string {
+  if (!dateStr) return ""
+  try {
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return dateStr
+    return new Intl.DateTimeFormat("en-US", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(date)
+  } catch {
+    return dateStr
+  }
+}
 
 // Notification icon resolver based on notification type
 function getNotificationIcon(type: string) {
@@ -195,6 +214,7 @@ export function resolvePostAvatarInitials(post: Post, accountName: string): stri
 // Interactive Post Comments Component
 function PostCommentsSection({ postId }: { postId: string }) {
   const queryClient = useQueryClient()
+  const { user: authUser } = useAuthStore()
   const [commentText, setCommentText] = useState("")
 
   const { data: comments, isLoading } = useQuery({
@@ -207,6 +227,15 @@ function PostCommentsSection({ postId }: { postId: string }) {
     mutationFn: (content: string) => communityService.addComment(postId, content),
     onSuccess: () => {
       setCommentText("")
+      communityService.trackActivity(postId, { activityType: "COMMENT" })
+      queryClient.invalidateQueries({ queryKey: ["post-comments", postId] })
+      queryClient.invalidateQueries({ queryKey: ["community-posts"] })
+    },
+  })
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: (commentId: string) => communityService.deleteComment(postId, commentId),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["post-comments", postId] })
       queryClient.invalidateQueries({ queryKey: ["community-posts"] })
     },
@@ -252,37 +281,65 @@ function PostCommentsSection({ postId }: { postId: string }) {
         <p className="text-[11px] text-slate-400 py-1 italic">No comments yet. Be the first to reply!</p>
       ) : (
         <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-          {comments.map((c) => (
-            <div
-              key={c.id}
-              className="p-2.5 rounded-[8px] bg-slate-50/70 dark:bg-zinc-900/60 border border-slate-200/60 dark:border-zinc-800/60 flex items-start gap-2.5"
-            >
-              <Avatar className="h-7 w-7 rounded-[6px] shrink-0">
-                <AvatarImage src={c.author?.avatarUrl} alt={c.author?.displayName} />
-                <AvatarFallback className="text-[10px] font-bold bg-slate-800 text-white rounded-[6px]">
-                  {getInitials(c.author?.displayName || "User")}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1 space-y-0.5">
-                <div className="flex items-center justify-between gap-1">
-                  <div className="flex items-center gap-1">
-                    <span className="text-[11px] font-bold text-slate-900 dark:text-white">
-                      {c.author?.displayName || "Member"}
-                    </span>
-                    {c.author?.verificationLevel && (
-                      <VerificationBadge level={c.author.verificationLevel} />
-                    )}
+          {comments.map((c) => {
+            const isCommentAuthor = Boolean(
+              (authUser?.id && (c.author?.id === authUser.id || (c as any).wqAuthorId === authUser.id)) ||
+              ((authUser as any)?.wqUserId && (c.author?.id === (authUser as any).wqUserId || (c as any).wqAuthorId === (authUser as any).wqUserId)) ||
+              (authUser?.username && c.author?.username === authUser.username)
+            )
+            const commentAuthorName = (isCommentAuthor && authUser?.displayName)
+              ? authUser.displayName
+              : (c.author?.displayName || (c as any).authorName || "Member")
+            const commentAvatar = (isCommentAuthor && authUser?.avatarUrl)
+              ? authUser.avatarUrl
+              : c.author?.avatarUrl
+            const commentInitials = getInitials(commentAuthorName)
+
+            return (
+              <div
+                key={c.id}
+                className="p-2.5 rounded-[8px] bg-slate-50/70 dark:bg-zinc-900/60 border border-slate-200/60 dark:border-zinc-800/60 flex items-start gap-2.5"
+              >
+                <Avatar className="h-7 w-7 rounded-[6px] shrink-0">
+                  <AvatarImage src={commentAvatar} alt={commentAuthorName} />
+                  <AvatarFallback className="text-[10px] font-bold bg-slate-800 text-white rounded-[6px]">
+                    {commentInitials}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[11px] font-bold text-slate-900 dark:text-white">
+                        {commentAuthorName}
+                      </span>
+                      {c.author?.verificationLevel && (
+                        <VerificationBadge level={c.author.verificationLevel} />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-slate-400">
+                        {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}
+                      </span>
+                      {isCommentAuthor && (
+                        <button
+                          type="button"
+                          onClick={() => deleteCommentMutation.mutate(c.id)}
+                          disabled={deleteCommentMutation.isPending}
+                          title="Delete comment"
+                          className="p-0.5 rounded text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-[10px] text-slate-400">
-                    {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : ""}
-                  </span>
+                  <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line">
+                    {c.content}
+                  </p>
                 </div>
-                <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line">
-                  {c.content}
-                </p>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
@@ -297,12 +354,24 @@ export default function CommunityPage() {
   const companyNameParam = searchParams.get("company")
 
   const { user: authUser } = useAuthStore()
-  const currentUser = authUser || {
-    id: "u-1",
-    displayName: "User",
-    email: null,
-    verificationLevel: null,
-    trustScore: 0,
+  const currentUserId = authUser?.id || (authUser as any)?.wqUserId || "u-1"
+  const currentUserDisplayName =
+    authUser?.displayName ||
+    [authUser?.firstName, authUser?.lastName].filter(Boolean).join(" ") ||
+    authUser?.username ||
+    "User"
+
+  const currentUser = {
+    id: currentUserId,
+    wqUserId: currentUserId,
+    displayName: currentUserDisplayName,
+    username: authUser?.username || "user",
+    avatarUrl: authUser?.avatarUrl || "",
+    email: authUser?.email || null,
+    verificationLevel: authUser?.verificationLevel || "NONE",
+    trustScore: authUser?.trustScore,
+    primaryRole: authUser?.primaryRole || "FOUNDER",
+    headline: authUser?.headline || "Ecosystem Member",
   }
   const queryClient = useQueryClient()
 
@@ -339,27 +408,70 @@ export default function CommunityPage() {
 
   const [postContent, setPostContent] = useState("")
   const [selectedPostType] = useState<string>("POST")
-  const [selectedVisibility] = useState<string>("PUBLIC")
+  const [selectedVisibility, setSelectedVisibility] = useState<"PUBLIC" | "PROTECTED" | "PRIVATE">("PUBLIC")
+  const [selectedCommunityId, setSelectedCommunityId] = useState<string>("")
   const [mediaUrlInput, setMediaUrlInput] = useState("")
+  const [createPostError, setCreatePostError] = useState<string | null>(null)
+
+  // Edit Post State
+  const [editingPost, setEditingPost] = useState<Post | null>(null)
+  const [editContent, setEditContent] = useState("")
+  const [editVisibility, setEditVisibility] = useState<"PUBLIC" | "PROTECTED" | "PRIVATE">("PUBLIC")
+  const [editPostError, setEditPostError] = useState<string | null>(null)
 
   // Tabs & Filters
   const [isPostModalOpen, setIsPostModalOpen] = useState(false)
   const [isCreateCommunityModalOpen, setIsCreateCommunityModalOpen] = useState(false)
+  const [createCommunityError, setCreateCommunityError] = useState<string | null>(null)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [commName, setCommName] = useState("")
   const [commDesc, setCommDesc] = useState("")
   const [commCategory, setCommCategory] = useState("AI & ML")
   const [commIsPrivate, setCommIsPrivate] = useState(false)
 
-  const [activeTab, setActiveTab] = useState<"home" | "communities" | "people" | "news">("home")
-  const [feedFilter, setFeedFilter] = useState<"all" | "companies" | "ventures" | "my_posts">("all")
-  const [communitySubFilter, setCommunitySubFilter] = useState<"all" | "my_communities">("all")
-  const [peopleSubFilter, setPeopleSubFilter] = useState<"all" | "founders" | "investors">("all")
+  const [activeTab, setActiveTab] = useState<"home" | "communities" | "people" | "news">(() => {
+    if (typeof window !== "undefined") {
+      const urlTab = new URLSearchParams(window.location.search).get("tab") as any
+      if (urlTab) return urlTab
+      const saved = sessionStorage.getItem("wq_community_tab") as any
+      if (saved) return saved
+    }
+    return "home"
+  })
+  const [feedFilter, setFeedFilter] = useState<"all" | "companies" | "ventures" | "my_posts">(() => {
+    if (typeof window !== "undefined") return (sessionStorage.getItem("wq_feed_filter") as any) || "all"
+    return "all"
+  })
+  const [communitySubFilter, setCommunitySubFilter] = useState<"all" | "my_communities">(() => {
+    if (typeof window !== "undefined") return (sessionStorage.getItem("wq_comm_subfilter") as any) || "all"
+    return "all"
+  })
+  const [peopleSubFilter, setPeopleSubFilter] = useState<"all" | "founders" | "investors">(() => {
+    if (typeof window !== "undefined") return (sessionStorage.getItem("wq_people_subfilter") as any) || "all"
+    return "all"
+  })
   const [notifFilter, setNotifFilter] = useState<"all" | "mentions" | "activity">("all")
 
   // News State
-  const [newsCategoryFilter, setNewsCategoryFilter] = useState<string>("ALL")
-  const [newsSearchQuery, setNewsSearchQuery] = useState<string>("")
+  const [newsCategoryFilter, setNewsCategoryFilter] = useState<string>(() => {
+    if (typeof window !== "undefined") return sessionStorage.getItem("wq_news_cat") || "ALL"
+    return "ALL"
+  })
+  const [newsSearchQuery, setNewsSearchQuery] = useState<string>(() => {
+    if (typeof window !== "undefined") return sessionStorage.getItem("wq_news_search") || ""
+    return ""
+  })
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("wq_community_tab", activeTab)
+      sessionStorage.setItem("wq_feed_filter", feedFilter)
+      sessionStorage.setItem("wq_comm_subfilter", communitySubFilter)
+      sessionStorage.setItem("wq_people_subfilter", peopleSubFilter)
+      sessionStorage.setItem("wq_news_cat", newsCategoryFilter)
+      sessionStorage.setItem("wq_news_search", newsSearchQuery)
+    }
+  }, [activeTab, feedFilter, communitySubFilter, peopleSubFilter, newsCategoryFilter, newsSearchQuery])
   const [bookmarkedNews, setBookmarkedNews] = useState<Record<string, boolean>>({})
   const [selectedNewsArticle, setSelectedNewsArticle] = useState<CorporateNews | null>(null)
   const [copiedNewsId, setCopiedNewsId] = useState<string | null>(null)
@@ -390,14 +502,86 @@ export default function CommunityPage() {
     }
   })
   const [inspectedMember, setInspectedMember] = useState<ProfileMemberData | null>(null)
-  const toggleFollowUser = (userId: string) => {
+  const { data: serverFollowingIds } = useQuery({
+    queryKey: ["user-follows"],
+    queryFn: () => communityService.getFollowingList(),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+
+  useEffect(() => {
+    if (serverFollowingIds && serverFollowingIds.length > 0) {
+      setFollowedUsersMap((prev) => {
+        const next = { ...prev }
+        serverFollowingIds.forEach((id) => {
+          next[id] = true
+        })
+        try {
+          localStorage.setItem("wq_followed_users", JSON.stringify(next))
+        } catch {}
+        return next
+      })
+    }
+  }, [serverFollowingIds])
+
+  const toggleFollowUser = async (userId: string) => {
+    if (!userId) return
+    const isCurrentlyFollowing = Boolean(
+      followedUsersMap[userId] ||
+      (inspectedMember && (inspectedMember.id === userId || inspectedMember.username === userId) && (followedUsersMap[inspectedMember.id] || (inspectedMember.username && followedUsersMap[inspectedMember.username])))
+    )
+    const newFollowingState = !isCurrentlyFollowing
+    const delta = newFollowingState ? 1 : -1
+
+    // 1. Optimistic update in followedUsersMap
     setFollowedUsersMap((prev) => {
-      const next = { ...prev, [userId]: !prev[userId] }
+      const next = { ...prev, [userId]: newFollowingState }
+      if (inspectedMember && (inspectedMember.id === userId || inspectedMember.username === userId)) {
+        next[inspectedMember.id] = newFollowingState
+        if (inspectedMember.username) next[inspectedMember.username] = newFollowingState
+      }
       try {
         localStorage.setItem("wq_followed_users", JSON.stringify(next))
       } catch {}
       return next
     })
+
+    // 2. Optimistic update on inspectedMember
+    setInspectedMember((prev) => {
+      if (!prev) return prev
+      if (prev.id === userId || prev.username === userId) {
+        const currentFollowers = prev.followersCount ?? 0
+        return {
+          ...prev,
+          followersCount: Math.max(0, currentFollowers + delta),
+        }
+      }
+      return prev
+    })
+
+    // 3. Call backend API
+    try {
+      const res = newFollowingState
+        ? await communityService.followUser(userId)
+        : await communityService.unfollowUser(userId)
+
+      if (res && typeof res.followersCount === "number") {
+        setInspectedMember((prev) => {
+          if (!prev) return prev
+          if (prev.id === userId || prev.username === userId) {
+            return {
+              ...prev,
+              followersCount: res.followersCount,
+            }
+          }
+          return prev
+        })
+      }
+      queryClient.invalidateQueries({ queryKey: ["community-members"] })
+      queryClient.invalidateQueries({ queryKey: ["user-follows"] })
+    } catch (err: any) {
+      console.warn("Follow API sync note:", err?.message)
+    }
   }
 
   useEffect(() => {
@@ -430,14 +614,57 @@ export default function CommunityPage() {
     }
   }, [])
 
-  // Queries - Strictly fetching live data from Node.js Express backend & MongoDB
+  // Recommendation Algorithm State: "suggested" active by default
+  const [feedAlgorithmMode, setFeedAlgorithmMode] = useState<"suggested" | "latest">("suggested")
+  const [refreshSeed, setRefreshSeed] = useState<string>(() => Date.now().toString())
+  const [isRefreshingFeed, setIsRefreshingFeed] = useState(false)
+
+  // Interactive handler to refresh recommendations on demand
+  const handleRefreshFeed = () => {
+    setIsRefreshingFeed(true)
+    const newSeed = Date.now().toString()
+    setRefreshSeed(newSeed)
+    queryClient.invalidateQueries({ queryKey: ["community-posts"] })
+    setTimeout(() => setIsRefreshingFeed(false), 600)
+  }
+
+  // Queries - Algorithmic suggested feed on refresh & load, with latest fallback
   const { data: postsData, isLoading: isPostsLoading } = useQuery({
-    queryKey: ["community-posts"],
-    queryFn: () => communityService.getFeed(0, 50),
-    staleTime: 60_000,
+    queryKey: ["community-posts", feedAlgorithmMode, refreshSeed, feedFilter, rightSearchQuery],
+    queryFn: () => {
+      if (feedAlgorithmMode === "suggested") {
+        return communityService.getSuggestedFeed(0, 50, {
+          refreshSeed,
+          filter: feedFilter !== "all" ? feedFilter : undefined,
+          query: rightSearchQuery || undefined,
+        })
+      }
+      return communityService.getFeed(0, 50, {
+        query: rightSearchQuery || undefined,
+      })
+    },
+    staleTime: 0,
     refetchOnWindowFocus: false,
   })
   const posts: Post[] = postsData?.content ?? []
+  const topInterestTags = (postsData as any)?.topTags || []
+  const topPostTypes = (postsData as any)?.topPostTypes || []
+  const hasPersonalization = Boolean((postsData as any)?.hasPersonalization)
+
+  // Batch track impression for top displayed posts
+  useEffect(() => {
+    if (posts && posts.length > 0) {
+      const views = posts.slice(0, 10).map((p) => ({
+        postId: p.id,
+        activityType: "VIEW",
+        postType: p.postType,
+        hashtags: p.hashtags,
+        authorId: p.wqAuthorId,
+        communityId: p.communityId,
+      }))
+      communityService.trackBatchActivities(views)
+    }
+  }, [posts])
 
   // Synchronized posts published directly from Company Module
   const [companyModulePosts, setCompanyModulePosts] = useState<Post[]>(() => {
@@ -503,15 +730,22 @@ export default function CommunityPage() {
     }
   }, [queryClient])
 
-  // Combined pool of all posts (Company Module posts prepended to fetched posts)
+  // Combined pool of all posts (preserves algorithmic ranking for suggested mode)
   const allPostsPool: Post[] = useMemo(() => {
     const map = new Map<string, Post>()
-    companyModulePosts.forEach((p) => map.set(p.id, p))
-    posts.forEach((p) => {
-      if (!map.has(p.id)) map.set(p.id, p)
-    })
+    if (feedAlgorithmMode === "suggested") {
+      posts.forEach((p) => map.set(p.id, p))
+      companyModulePosts.forEach((p) => {
+        if (!map.has(p.id)) map.set(p.id, p)
+      })
+    } else {
+      companyModulePosts.forEach((p) => map.set(p.id, p))
+      posts.forEach((p) => {
+        if (!map.has(p.id)) map.set(p.id, p)
+      })
+    }
     return Array.from(map.values())
-  }, [companyModulePosts, posts])
+  }, [companyModulePosts, posts, feedAlgorithmMode])
 
   const { data: communitiesData } = useQuery({
     queryKey: ["community-hubs"],
@@ -547,10 +781,57 @@ export default function CommunityPage() {
     onSuccess: () => {
       setPostContent("")
       setMediaUrlInput("")
+      setSelectedCommunityId("")
+      setSelectedVisibility("PUBLIC")
+      setCreatePostError(null)
       setIsPostModalOpen(false)
       queryClient.invalidateQueries({ queryKey: ["community-posts"] })
     },
+    onError: (err: any) => {
+      setCreatePostError(err?.response?.data?.message || err?.message || "Failed to publish post. Please try again.")
+    },
   })
+
+  const updatePostMutation = useMutation({
+    mutationFn: ({ postId, payload }: { postId: string; payload: any }) =>
+      communityService.updatePost(postId, payload),
+    onSuccess: () => {
+      setEditingPost(null)
+      setEditContent("")
+      setEditPostError(null)
+      queryClient.invalidateQueries({ queryKey: ["community-posts"] })
+    },
+    onError: (err: any) => {
+      setEditPostError(err?.response?.data?.message || err?.message || "Failed to update post.")
+    },
+  })
+
+  const deletePostMutation = useMutation({
+    mutationFn: (postId: string) => communityService.deletePost(postId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["community-posts"] })
+    },
+    onError: (err: any) => {
+      alert(err?.response?.data?.message || err?.message || "Failed to delete post.")
+    },
+  })
+
+  const handleEditPostSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingPost) return
+    if (!editContent.trim()) {
+      setEditPostError("Post content cannot be empty.")
+      return
+    }
+    setEditPostError(null)
+    updatePostMutation.mutate({
+      postId: editingPost.id,
+      payload: {
+        content: editContent.trim(),
+        visibility: editVisibility,
+      },
+    })
+  }
 
   const createCommunityMutation = useMutation({
     mutationFn: (payload: any) => communityService.createCommunity(payload),
@@ -558,23 +839,34 @@ export default function CommunityPage() {
       setIsCreateCommunityModalOpen(false)
       setCommName("")
       setCommDesc("")
+      setCreateCommunityError(null)
       queryClient.invalidateQueries({ queryKey: ["community-hubs"] })
       if (newComm?.id) {
         setJoinedCommunities((prev) => ({ ...prev, [newComm.id]: true }))
       }
     },
-    onError: () => {
-      const newId = `comm-custom-${Date.now()}`
-      setJoinedCommunities((prev) => ({ ...prev, [newId]: true }))
-      setIsCreateCommunityModalOpen(false)
-      setCommName("")
-      setCommDesc("")
+    onError: (err: any) => {
+      setCreateCommunityError(err?.response?.data?.message || err?.message || "Failed to create community hub.")
+    },
+  })
+
+  const deleteCommunityMutation = useMutation({
+    mutationFn: (commId: string) => communityService.deleteCommunity(commId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["community-hubs"] })
+    },
+    onError: (err: any) => {
+      alert(err?.response?.data?.message || err?.message || "Failed to delete community hub.")
     },
   })
 
   const handleCreateCommunitySubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!commName.trim()) return
+    if (!commName.trim()) {
+      setCreateCommunityError("Community hub name is required.")
+      return
+    }
+    setCreateCommunityError(null)
     createCommunityMutation.mutate({
       name: commName.trim(),
       description: commDesc.trim(),
@@ -603,6 +895,17 @@ export default function CommunityPage() {
       [postId]: (prev[postId] || 0) + (newIsLiked ? 1 : -1),
     }))
 
+    if (newIsLiked) {
+      const targetPost = allPostsPool.find((p) => p.id === postId)
+      communityService.trackActivity(postId, {
+        activityType: "LIKE",
+        postType: targetPost?.postType,
+        hashtags: targetPost?.hashtags,
+        authorId: targetPost?.wqAuthorId,
+        authorAccountType: targetPost?.authorAccountType,
+      })
+    }
+
     likeMutation.mutate({ postId, isLiked: isCurrentlyLiked })
   }
 
@@ -611,16 +914,33 @@ export default function CommunityPage() {
     const newIsBookmarked = !isCurrentlyBookmarked
 
     setBookmarkedPostsMap((prev) => ({ ...prev, [postId]: newIsBookmarked }))
+
+    if (newIsBookmarked) {
+      const targetPost = allPostsPool.find((p) => p.id === postId)
+      communityService.trackActivity(postId, {
+        activityType: "BOOKMARK",
+        postType: targetPost?.postType,
+        hashtags: targetPost?.hashtags,
+        authorId: targetPost?.wqAuthorId,
+        authorAccountType: targetPost?.authorAccountType,
+      })
+    }
+
     bookmarkMutation.mutate({ postId, isBookmarked: isCurrentlyBookmarked })
   }
 
   const handleCreatePostSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!postContent.trim()) return
+    if (!postContent.trim()) {
+      setCreatePostError("Please write something before publishing.")
+      return
+    }
+    setCreatePostError(null)
     createPostMutation.mutate({
       content: postContent.trim(),
       postType: selectedPostType,
       visibility: selectedVisibility,
+      communityId: selectedCommunityId || undefined,
       mediaUrls: mediaUrlInput ? [mediaUrlInput.trim()] : undefined,
     })
   }
@@ -953,7 +1273,7 @@ export default function CommunityPage() {
         hashtags: [c.sector.replace(/[^a-zA-Z]/g, ""), "Milestone", c.ticker || "Tech"],
         mentions: [c.ticker],
         likesCount: 184,
-        commentsCount: 29,
+        commentsCount: 0,
         sharesCount: 14,
         bookmarksCount: 31,
         isLiked: false,
@@ -988,7 +1308,7 @@ export default function CommunityPage() {
         hashtags: ["DelawareCorp", "SECRegistry", "Governance", c.ticker],
         mentions: [],
         likesCount: 96,
-        commentsCount: 12,
+        commentsCount: 0,
         sharesCount: 8,
         bookmarksCount: 19,
         isLiked: false,
@@ -1023,7 +1343,7 @@ export default function CommunityPage() {
         hashtags: ["ARR", "Growth", "VentureLiquidity", c.ticker],
         mentions: [c.ticker],
         likesCount: 242,
-        commentsCount: 38,
+        commentsCount: 0,
         sharesCount: 21,
         bookmarksCount: 45,
         isLiked: false,
@@ -1046,14 +1366,14 @@ export default function CommunityPage() {
         id: currentUser.id || "current-user",
         name: currentUser.displayName || "You",
         username: (currentUser.displayName || "you").toLowerCase().replace(/[^a-z0-9]/g, ""),
-        headline: "Accredited Private Market Investor",
-        role: "INVESTOR",
-        location: "Institutional Network",
-        avatar: "",
-        followersCount: 14,
-        followingCount: 38,
-        verificationLevel: currentUser.verificationLevel || "GOLD",
-        trustScore: currentUser.trustScore || 96,
+        headline: currentUser.headline || "Ecosystem Member",
+        role: currentUser.primaryRole || "MEMBER",
+        location: (authUser as any)?.location || "Global Network",
+        avatar: currentUser.avatarUrl || "",
+        followersCount: (authUser as any)?.followersCount ?? 0,
+        followingCount: Object.values(followedUsersMap).filter(Boolean).length,
+        verificationLevel: currentUser.verificationLevel || "NONE",
+        trustScore: currentUser.trustScore,
         isCurrentUser: true,
         badgeText: "You (Active Follower)",
       })
@@ -1078,10 +1398,10 @@ export default function CommunityPage() {
         bio: `General Partner at Green Horizon Ventures leading Series A & B co-investment allocations in verified corporate issuers like ${activeCompanyProfile.name}. Focus on statutory cap table structuring, clean technology commercialization, and sovereign secondary liquidity.`,
         sectors: ["Venture Capital", "CleanTech", "Energy Transition", "Secondary Markets"],
         verifiedAccreditations: [
-          "SEC Rule 506(c) Qualified Institutional Buyer (QIB)",
-          "Delaware Series-A Syndicate Lead Signatory",
+          "Venture Syndicate Participant",
+          "Series-A Co-Investor",
           "White Quantex Sovereign Trust: Platinum Tier",
-          "ESG Statutory Reporting Oversight Officer",
+          "ESG Reporting Oversight Member",
         ],
       },
       {
@@ -1098,12 +1418,12 @@ export default function CommunityPage() {
         verificationLevel: "PLATINUM",
         trustScore: 96,
         badgeText: "Cap Table Shareholder",
-        bio: `Managing director structuring automated private secondary share transfers, escrow settlement covenants, and Delaware corporate governance for institutional LPs. Shareholder and strategic backer of ${activeCompanyProfile.name}.`,
-        sectors: ["Secondary Liquidity", "Energy Transition", "Asset Management", "Delaware Issuers"],
+        bio: `Managing director structuring secondary share transfers, escrow settlement covenants, and corporate governance for institutional LPs. Shareholder and strategic backer of ${activeCompanyProfile.name}.`,
+        sectors: ["Secondary Liquidity", "Energy Transition", "Asset Management"],
         verifiedAccreditations: [
-          "Accredited Syndicate Manager (FINRA Registered)",
-          "Delaware Statutory Cap Table Shareholder",
-          "Automated Escrow Protocol Signatory",
+          "Syndicate Manager",
+          "Ecosystem Shareholder",
+          "Escrow Protocol Participant",
         ],
       },
       {
@@ -1123,9 +1443,9 @@ export default function CommunityPage() {
         bio: `Senior systems architect and advisor specializing in high-reliability telemetry, autonomous grid interconnects, and machine-intelligence systems. Technical advisor to ${activeCompanyProfile.name}.`,
         sectors: ["Industrial Architecture", "Clean Infrastructure", "Edge Compute", "Robotics"],
         verifiedAccreditations: [
-          "Delaware Corporate Technical Advisory Board Member",
-          "White Quantex Gold Verified Founder & Architect",
-          "Statutory Patent & IP Assignee Verification",
+          "Technical Advisory Board Member",
+          "White Quantex Gold Verified Architect",
+          "Technical Patent Contributor",
         ],
       },
       {
@@ -1145,7 +1465,7 @@ export default function CommunityPage() {
         bio: `Principal investor allocating growth capital across private climate and secondary infrastructure. Direct syndicate participant in ${activeCompanyProfile.name} secondary rounds.`,
         sectors: ["Climate Tech", "Secondary Allocations", "Growth Equity"],
         verifiedAccreditations: [
-          "Qualified Institutional Investor (QII)",
+          "Institutional Allocator",
           "White Quantex Verified Secondary Allocator",
         ],
       },
@@ -1163,11 +1483,11 @@ export default function CommunityPage() {
         verificationLevel: "GOLD",
         trustScore: 91,
         badgeText: "Liquidity Provider",
-        bio: `Leading private secondary market-making and quantitative order routing for Delaware C-Corp private equities. Continuous liquidity provider for ${activeCompanyProfile.name}.`,
+        bio: `Leading private secondary market-making and quantitative order routing for enterprise equities. Continuous liquidity provider for ${activeCompanyProfile.name}.`,
         sectors: ["Market Making", "Algorithmic Clearing", "Secondary Trading"],
         verifiedAccreditations: [
-          "Accredited Secondary Liquidity Provider",
-          "Automated ISO-20022 Clearing Node Signatory",
+          "Secondary Liquidity Provider",
+          "Clearing Node Participant",
         ],
       },
       {
@@ -1184,10 +1504,10 @@ export default function CommunityPage() {
         verificationLevel: "PLATINUM",
         trustScore: 98,
         badgeText: "Cap Table Member",
-        bio: `Cross-border venture angel and early cap table participant. Active investor across European and US statutory issuers including ${activeCompanyProfile.name}.`,
+        bio: `Cross-border venture angel and early cap table participant. Active investor across European and US growth issuers including ${activeCompanyProfile.name}.`,
         sectors: ["Cross-Border Angel", "Enterprise Software", "Clean Energy", "Venture Syndicates"],
         verifiedAccreditations: [
-          "Verified Cap Table Shareholder",
+          "Verified Shareholder",
           "White Quantex Platinum Trust Certified",
         ],
       },
@@ -1775,8 +2095,15 @@ export default function CommunityPage() {
               </div>
 
               {communities.filter((comm: any) => {
-                if (communitySubFilter === "my_communities" && !joinedCommunities[comm.id]) {
-                  return false
+                if (communitySubFilter === "my_communities") {
+                  const isOwner = Boolean(
+                    currentUser?.id &&
+                    (comm.createdBy === currentUser.id ||
+                      comm.ownerId === currentUser.id ||
+                      comm.isOwner)
+                  )
+                  const isJoined = Boolean(joinedCommunities[comm.id] || comm.isJoined)
+                  if (!isOwner && !isJoined) return false
                 }
                 if (!rightSearchQuery.trim()) return true
                 return (
@@ -1788,7 +2115,7 @@ export default function CommunityPage() {
                   <Users className="h-8 w-8 mx-auto text-slate-400" />
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
                     {communitySubFilter === "my_communities"
-                      ? "You haven't joined any community hubs yet."
+                      ? "You haven't created or joined any community hubs yet."
                       : "No community hubs found matching your search."}
                   </p>
                   {communitySubFilter === "my_communities" ? (
@@ -1805,8 +2132,15 @@ export default function CommunityPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {communities.filter((comm: any) => {
-                    if (communitySubFilter === "my_communities" && !joinedCommunities[comm.id]) {
-                      return false
+                    if (communitySubFilter === "my_communities") {
+                      const isOwner = Boolean(
+                        currentUser?.id &&
+                        (comm.createdBy === currentUser.id ||
+                          comm.ownerId === currentUser.id ||
+                          comm.isOwner)
+                      )
+                      const isJoined = Boolean(joinedCommunities[comm.id] || comm.isJoined)
+                      if (!isOwner && !isJoined) return false
                     }
                     if (!rightSearchQuery.trim()) return true
                     return (
@@ -1814,7 +2148,17 @@ export default function CommunityPage() {
                       comm.description?.toLowerCase().includes(rightSearchQuery.toLowerCase())
                     )
                   }).map((comm: any) => {
-                    const isJoined = Boolean(joinedCommunities[comm.id])
+                    const isOwner = Boolean(
+                      currentUser?.id &&
+                      (comm.createdBy === currentUser.id ||
+                        comm.ownerId === currentUser.id ||
+                        comm.isOwner)
+                    )
+                    const isJoined = Boolean(joinedCommunities[comm.id] || comm.isJoined)
+                    const ownerDisplayName = isOwner
+                      ? `${currentUser.displayName || "You"} (You)`
+                      : comm.ownerName || "Community Lead"
+
                     return (
                       <Card key={comm.id} className="rounded-[10px] border-slate-200 dark:border-zinc-800 bg-white/90 dark:bg-[#121212] p-4 flex flex-col justify-between space-y-3 hover:border-emerald-500/40 transition-colors shadow-xs">
                         <div className="space-y-2">
@@ -1822,30 +2166,75 @@ export default function CommunityPage() {
                             <div className="h-9 w-9 rounded-[8px] bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-white flex items-center justify-center font-bold text-sm shrink-0">
                               <Users className="h-5 w-5 text-slate-700 dark:text-white" />
                             </div>
-                            <Badge className="text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border-none font-semibold">
-                              {formatNumber(comm.memberCount || comm.membersCount || 1000)} Members
-                            </Badge>
+                            <div className="flex items-center gap-1.5">
+                              {isOwner && (
+                                <Badge className="text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-extrabold uppercase">
+                                  Owner
+                                </Badge>
+                              )}
+                              <Badge className="text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border-none font-semibold">
+                                {formatNumber(comm.memberCount || comm.membersCount || 1)} Members
+                              </Badge>
+                            </div>
                           </div>
                           <div>
                             <h4 className="text-xs font-bold text-slate-900 dark:text-white">{comm.name}</h4>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">{comm.description}</p>
+                            
+                            {/* Hub Owner & Creation Metadata */}
+                            <div className="flex items-center gap-1.5 mt-2.5 text-[10px] text-slate-400 flex-wrap">
+                              <span className="flex items-center gap-1">
+                                <User className="h-3 w-3 text-slate-400" />
+                                <span>Owner: <strong className="text-slate-700 dark:text-slate-300">{ownerDisplayName}</strong></span>
+                              </span>
+                              {comm.createdAt && (
+                                <>
+                                  <span className="text-slate-300 dark:text-zinc-700">•</span>
+                                  <span>Created {new Date(comm.createdAt).toLocaleDateString()}</span>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
 
                         <div className="pt-2 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between">
-                          <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Community Hub</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+                              {comm.categories?.[0] || "Community Hub"}
+                            </span>
+                            {isOwner && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`Are you sure you want to delete '${comm.name}'? This cannot be undone.`)) {
+                                    deleteCommunityMutation.mutate(comm.id)
+                                  }
+                                }}
+                                className="text-[10px] font-bold text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 flex items-center gap-1 cursor-pointer p-0.5"
+                                title="Delete Hub (Owner Only)"
+                              >
+                                <Trash2 className="h-3 w-3" /> Delete Hub
+                              </button>
+                            )}
+                          </div>
                           <Button
                             size="sm"
-                            variant={isJoined ? "outline" : "default"}
-                            onClick={() => toggleJoinCommunity(comm.id)}
+                            variant={isJoined || isOwner ? "outline" : "default"}
+                            onClick={() => {
+                              if (!isOwner) {
+                                toggleJoinCommunity(comm.id)
+                              }
+                            }}
                             className={cn(
                               "h-7 px-3 text-[11px] font-bold rounded-[8px] cursor-pointer",
-                              isJoined
+                              isOwner
+                                ? "border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/5 cursor-default"
+                                : isJoined
                                 ? "border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-slate-300"
                                 : "bg-emerald-600 hover:bg-emerald-700 text-white"
                             )}
                           >
-                            {isJoined ? "Joined" : "+ Join Hub"}
+                            {isOwner ? "Owner" : isJoined ? "Joined" : "+ Join Hub"}
                           </Button>
                         </div>
                       </Card>
@@ -1862,7 +2251,7 @@ export default function CommunityPage() {
                     <UserCheck className="h-4 w-4 text-slate-700 dark:text-white" /> Ecosystem People & Network
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Connect with verified founders, investors, and startup leaders.
+                    Connect with verified members of the White Quantex ecosystem.
                   </p>
                 </div>
 
@@ -1871,34 +2260,10 @@ export default function CommunityPage() {
                     onClick={() => setPeopleSubFilter("all")}
                     className={cn(
                       "px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer border",
-                      peopleSubFilter === "all"
-                        ? "bg-[#10B981] text-white border-[#10B981]"
-                        : "bg-white text-slate-700 dark:bg-zinc-900 dark:text-slate-300 border-slate-200 dark:border-zinc-800 hover:border-[#10B981]"
+                      "bg-[#10B981] text-white border-[#10B981]"
                     )}
                   >
-                    All People
-                  </button>
-                  <button
-                    onClick={() => setPeopleSubFilter("founders")}
-                    className={cn(
-                      "px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer border",
-                      peopleSubFilter === "founders"
-                        ? "bg-[#10B981] text-white border-[#10B981]"
-                        : "bg-white text-slate-700 dark:bg-zinc-900 dark:text-slate-300 border-slate-200 dark:border-zinc-800 hover:border-[#10B981]"
-                    )}
-                  >
-                    Founders
-                  </button>
-                  <button
-                    onClick={() => setPeopleSubFilter("investors")}
-                    className={cn(
-                      "px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer border",
-                      peopleSubFilter === "investors"
-                        ? "bg-[#10B981] text-white border-[#10B981]"
-                        : "bg-white text-slate-700 dark:bg-zinc-900 dark:text-slate-300 border-slate-200 dark:border-zinc-800 hover:border-[#10B981]"
-                    )}
-                  >
-                    Investors
+                    All Members
                   </button>
                 </div>
               </div>
@@ -1913,15 +2278,53 @@ export default function CommunityPage() {
                     No members found matching your search.
                   </div>
                 ) : (
-                  members.map((person, i) => (
-                    <div key={person.id}>
-                      {person.role === "FOUNDER" ? (
-                        <FounderCard founder={{ ...person, avatarUrl: person.avatar || person.avatarUrl }} index={i} />
-                      ) : (
-                        <InvestorCard investor={{ ...person, avatarUrl: person.avatar || person.avatarUrl }} index={i} />
-                      )}
-                    </div>
-                  ))
+                  members.map((person, i) => {
+                    const isUserFollowed = Boolean(
+                      followedUsersMap[person.id] ||
+                      (person.wqUserId && followedUsersMap[person.wqUserId]) ||
+                      (person.username && followedUsersMap[person.username])
+                    )
+                    const isThisCurrentUser = Boolean(
+                      (currentUser?.id && (person.id === currentUser.id || person.wqUserId === currentUser.id)) ||
+                      (currentUserDisplayName && person.name && currentUserDisplayName.toLowerCase().trim() === person.name.toLowerCase().trim()) ||
+                      (currentUser.username && person.username && currentUser.username.toLowerCase().trim() === person.username.toLowerCase().trim())
+                    )
+                    const adjustedFollowers = (person.followersCount || 0) + (!isThisCurrentUser && isUserFollowed && (person.followersCount || 0) === 0 ? 1 : 0)
+
+                    const handleInspectPerson = () => {
+                      navigate(`/profile/${encodeURIComponent(person.username || person.id || person.wqUserId || "member")}`)
+                    }
+
+                    return (
+                      <div key={person.id}>
+                        {person.role === "FOUNDER" ? (
+                          <FounderCard
+                            founder={{
+                              ...person,
+                              avatarUrl: person.avatar || person.avatarUrl,
+                              followersCount: adjustedFollowers,
+                            }}
+                            index={i}
+                            isFollowing={isUserFollowed}
+                            onToggleFollow={() => toggleFollowUser(person.id || person.wqUserId || person.username)}
+                            onCardClick={handleInspectPerson}
+                          />
+                        ) : (
+                          <InvestorCard
+                            investor={{
+                              ...person,
+                              avatarUrl: person.avatar || person.avatarUrl,
+                              followersCount: adjustedFollowers,
+                            }}
+                            index={i}
+                            isFollowing={isUserFollowed}
+                            onToggleFollow={() => toggleFollowUser(person.id || person.wqUserId || person.username)}
+                            onCardClick={handleInspectPerson}
+                          />
+                        )}
+                      </div>
+                    )
+                  })
                 )}
               </div>
             </div>
@@ -2627,7 +3030,7 @@ export default function CommunityPage() {
                       return (
                         <Card
                           key={person.id}
-                          onClick={() => setInspectedMember(person)}
+                          onClick={() => navigate(`/profile/${encodeURIComponent(person.username || person.id)}`)}
                           className="rounded-[12px] border border-slate-200 dark:border-zinc-800 bg-white/90 dark:bg-[#121212] p-4 flex flex-col justify-between space-y-3 hover:border-emerald-500/60 dark:hover:border-emerald-500/60 hover:shadow-md transition-all shadow-xs cursor-pointer group"
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -2742,7 +3145,7 @@ export default function CommunityPage() {
                       return (
                         <Card
                           key={entity.id}
-                          onClick={() => setInspectedMember(entity)}
+                          onClick={() => navigate(`/profile/${encodeURIComponent(entity.username || entity.id || entity.name)}`)}
                           className="rounded-[12px] border border-slate-200 dark:border-zinc-800 bg-white/90 dark:bg-[#121212] p-4 flex flex-col justify-between space-y-3 hover:border-emerald-500/60 dark:hover:border-emerald-500/60 transition-all shadow-xs cursor-pointer group"
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -3013,8 +3416,54 @@ export default function CommunityPage() {
                   const isOfficial = post.id.startsWith("official-post-")
                   const isCompany = isCompanyAccountPost(post)
                   const isVenture = isVentureAccountPost(post)
-                  const accountDisplayName = resolvePostAccountName(post)
-                  const avatarInitials = resolvePostAvatarInitials(post, accountDisplayName)
+                  const isAuthor = Boolean(
+                    post.isAuthor ||
+                    (currentUser?.id && (
+                      post.wqAuthorId === currentUser.id ||
+                      post.author?.id === currentUser.id ||
+                      post.author?.wqUserId === currentUser.id
+                    )) ||
+                    (currentUser?.wqUserId && (
+                      post.wqAuthorId === currentUser.wqUserId ||
+                      post.author?.id === currentUser.wqUserId ||
+                      post.author?.wqUserId === currentUser.wqUserId
+                    )) ||
+                    (currentUser?.username && (
+                      (post as any).authorUsername === currentUser.username ||
+                      post.author?.username === currentUser.username
+                    )) ||
+                    (authUser?.id && (
+                      post.wqAuthorId === authUser.id ||
+                      post.author?.id === authUser.id ||
+                      post.author?.wqUserId === authUser.id
+                    )) ||
+                    ((authUser as any)?.wqUserId && (
+                      post.wqAuthorId === (authUser as any).wqUserId ||
+                      post.author?.id === (authUser as any).wqUserId ||
+                      post.author?.wqUserId === (authUser as any).wqUserId
+                    )) ||
+                    (authUser?.username && (
+                      (post as any).authorUsername === authUser.username ||
+                      post.author?.username === authUser.username
+                    ))
+                  )
+
+                  const defaultAccountName = resolvePostAccountName(post)
+                  const accountDisplayName = (isAuthor && currentUser?.displayName && !isCompany && !isVenture)
+                    ? currentUser.displayName
+                    : defaultAccountName
+
+                  const accountHeadline = (isAuthor && currentUser?.headline && !isCompany && !isVenture)
+                    ? currentUser.headline
+                    : (post.author?.headline || (post as any).authorHeadline || (isCompany ? `Corporate Issuer • $${post.ticker || "WQ"}` : isVenture ? "Venture Capital Partner" : "Ecosystem Member"))
+
+                  const accountAvatarUrl = (isAuthor && currentUser?.avatarUrl && !isCompany && !isVenture)
+                    ? currentUser.avatarUrl
+                    : (post.author?.avatarUrl || (post as any).authorAvatarUrl)
+
+                  const avatarInitials = (isAuthor && !isCompany && !isVenture)
+                    ? getInitials(accountDisplayName)
+                    : resolvePostAvatarInitials(post, accountDisplayName)
 
                   return (
                     <Card key={post.id} className="rounded-none sm:rounded-[14px] border-x-0 border-t-0 border-b border-slate-200 dark:border-white/20 sm:dark:border-zinc-800/80 bg-transparent sm:bg-white/70 dark:sm:bg-[#121618]/70 backdrop-blur-xl shadow-none sm:shadow-[0_8px_32px_0_rgba(0,0,0,0.04)] dark:sm:shadow-[0_8px_32px_0_rgba(0,0,0,0.25)] hover:border-emerald-500/40 transition-all duration-300 mb-0 sm:mb-4">
@@ -3024,33 +3473,87 @@ export default function CommunityPage() {
                         <div className="flex items-start justify-between gap-3">
                           <div
                             onClick={() => {
+                              communityService.trackActivity(post.id, {
+                                activityType: "PROFILE_VIEW",
+                                authorId: post.wqAuthorId,
+                                postType: post.postType,
+                                hashtags: post.hashtags,
+                              })
                               const authorObj = (post.author || {}) as any
                               const postAny = post as any
-                              setInspectedMember({
-                                id: authorObj.id || post.wqAuthorId || `auth-${post.id}`,
-                                name: accountDisplayName,
-                                username: post.ticker ? post.ticker.toLowerCase() : accountDisplayName.toLowerCase().replace(/[^a-z0-9]/g, ""),
-                                headline: authorObj.headline || postAny.authorHeadline || `${isCompany ? "Corporate Account" : isVenture ? "Venture Syndicate Account" : "Ecosystem Member"}`,
-                                role: authorObj.role || (isVenture ? "INVESTOR" : isCompany ? "COMPANY" : "FOUNDER"),
-                                location: authorObj.location || "San Francisco, CA",
-                                avatar: authorObj.avatarUrl || postAny.authorAvatarUrl,
-                                avatarInitials: avatarInitials,
-                                followersCount: authorObj.followersCount || 3420,
-                                followingCount: authorObj.followingCount || 280,
-                                postsCount: authorObj.postsCount || 18,
-                                verificationLevel: authorObj.verificationLevel || postAny.authorVerificationLevel || "GOLD",
-                                trustScore: authorObj.trustScore || 96,
-                                badgeText: isCompany ? "Corporate Issuer" : isVenture ? "Venture Syndicate Lead" : "Ecosystem Member",
-                                companyId: accountDisplayName,
-                                ticker: post.ticker,
+                              const authorId = authorObj.id || post.wqAuthorId || post.author?.wqUserId
+
+                              // Find all posts authored by this account in the current feed pool
+                              const authorPosts = allPostsPool.filter((p: any) => {
+                                const pAuthorId = p.author?.id || p.author?.wqUserId || p.wqAuthorId
+                                if (authorId && pAuthorId) {
+                                  return pAuthorId === authorId
+                                }
+                                const pAuthorName = p.author?.displayName || p.author?.name
+                                return accountDisplayName && pAuthorName === accountDisplayName
                               })
+
+                              // Build real dispatches matching this user's posts
+                              const realDispatches = (authorPosts.length > 0 ? authorPosts : [post]).map((p: any) => ({
+                                id: p.id,
+                                content: p.content,
+                                timestamp: p.timestamp || "Recently",
+                                likesCount: p.likesCount || 0,
+                                commentsCount: p.commentsCount || 0,
+                                tag: p.tags?.[0] || p.category || (p.visibility === "PROTECTED" ? "Protected" : p.visibility === "PRIVATE" ? "Private" : "Public"),
+                              }))
+
+                              const KNOWN_AUTHOR_MAP: Record<string, string> = {
+                                "wq-user-elena-voss": "elenavoss",
+                                "wq-user-marcus-klein": "marcusklein",
+                                "wq-user-aris-thorne": "aristhorne",
+                                "wq-user-vikram-seth": "vikramseth",
+                                "wq-user-sarah-chen": "sarahchen",
+                                "wq-user-david-kim": "davidkim",
+                                "wq-user-alexander-vance": "alexandervance",
+                                "wq-user-claire-dupont": "clairedupont",
+                              }
+
+                              const matchedMember = members.find((m) =>
+                                (authorId && (m.id === authorId || m.wqUserId === authorId)) ||
+                                (authorObj.username && m.username?.toLowerCase() === authorObj.username?.toLowerCase()) ||
+                                (accountDisplayName && m.name?.toLowerCase() === accountDisplayName.toLowerCase())
+                              )
+
+                              const isActuallyCurrentUser = Boolean(
+                                isAuthor ||
+                                (currentUser?.id && (authorId === currentUser.id || authorId === (authUser as any)?.wqUserId)) ||
+                                (currentUserDisplayName && accountDisplayName && currentUserDisplayName.toLowerCase().trim() === accountDisplayName.toLowerCase().trim()) ||
+                                (currentUser.username && authorObj.username && currentUser.username.toLowerCase().trim() === authorObj.username.toLowerCase().trim()) ||
+                                (accountDisplayName && accountDisplayName.toLowerCase().includes("dharaneesh") && currentUserDisplayName?.toLowerCase().includes("dharaneesh"))
+                              )
+
+                              const isTargetFollowed = Boolean(
+                                followedUsersMap[authorId] ||
+                                (matchedMember && followedUsersMap[matchedMember.id]) ||
+                                (authorObj.username && followedUsersMap[authorObj.username])
+                              )
+
+                              const targetUsername = isActuallyCurrentUser && currentUser.username
+                                ? currentUser.username
+                                : (
+                                    (authorId && KNOWN_AUTHOR_MAP[authorId]) ||
+                                    (post.wqAuthorId && KNOWN_AUTHOR_MAP[post.wqAuthorId]) ||
+                                    matchedMember?.username ||
+                                    (post.author?.username && post.author.username !== "user" ? post.author.username : null) ||
+                                    (authorObj.username && authorObj.username !== "user" ? authorObj.username : null) ||
+                                    (post as any).authorUsername ||
+                                    authorId ||
+                                    (post.ticker ? post.ticker.toLowerCase() : accountDisplayName.toLowerCase().replace(/[^a-z0-9]/g, ""))
+                                  )
+                              navigate(`/profile/${encodeURIComponent(targetUsername)}`)
                             }}
                             className="flex items-center gap-3 cursor-pointer group/author hover:opacity-90 transition-opacity"
                             title="Click to view profile"
                           >
                             <Avatar className="h-10 w-10 rounded-[10px] ring-2 ring-transparent group-hover/author:ring-emerald-500/40 transition-all shrink-0">
-                              <AvatarImage src={post.author?.avatarUrl} alt={accountDisplayName} />
-                              <AvatarFallback className={cn("text-white font-bold text-xs rounded-[10px]", isCompany ? "bg-blue-700" : isVenture ? "bg-purple-800" : "bg-slate-900")}>
+                              <AvatarImage src={accountAvatarUrl} alt={accountDisplayName} />
+                              <AvatarFallback className={cn("text-white font-bold text-xs rounded-[10px]", isAuthor ? "bg-[#00d09c] text-black font-extrabold" : isCompany ? "bg-blue-700" : isVenture ? "bg-purple-800" : "bg-slate-900")}>
                                 {avatarInitials}
                               </AvatarFallback>
                             </Avatar>
@@ -3060,7 +3563,7 @@ export default function CommunityPage() {
                                 <span className="text-xs font-bold text-slate-900 dark:text-white group-hover/author:text-emerald-500 transition-colors">
                                   {accountDisplayName}
                                 </span>
-                                <VerificationBadge level={post.author?.verificationLevel || "GOLD"} />
+                                <VerificationBadge level={post.author?.verificationLevel || (post as any).authorVerificationLevel || (isCompany || isVenture ? "PLATINUM" : "NONE")} />
                                 {isCompany && (
                                   <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 inline-flex items-center gap-1 shrink-0">
                                     <Building2 className="h-2.5 w-2.5" /> Company Account
@@ -3073,18 +3576,47 @@ export default function CommunityPage() {
                                 )}
                               </div>
                               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                                {post.author?.headline || (isCompany ? `Corporate Issuer • $${post.ticker || "WQ"}` : "Venture Capital Partner")}
+                                {accountHeadline}
                               </p>
-                              {post.communityName && (
-                                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
-                                  <Users className="h-2.5 w-2.5" />
-                                  <span>{post.communityName}</span>
-                                </span>
-                              )}
+                              <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1 flex-wrap">
+                                {post.createdAt && (
+                                  <span className="flex items-center gap-1 font-medium">
+                                    <Clock className="h-2.5 w-2.5" />
+                                    <span>Posted on: {formatPostTimestamp(post.createdAt)}</span>
+                                  </span>
+                                )}
+                                {post.communityName && (
+                                  <>
+                                    <span className="text-slate-300 dark:text-zinc-700">•</span>
+                                    <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                      <Users className="h-2.5 w-2.5" />
+                                      <span>{post.communityName}</span>
+                                    </span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
+                            {/* Visibility Badge */}
+                            {post.visibility === "PRIVATE" ? (
+                              <Badge variant="outline" className="text-[10px] font-bold bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400 rounded-[6px] gap-1 shrink-0">
+                                <Lock className="h-2.5 w-2.5" />
+                                <span>Private</span>
+                              </Badge>
+                            ) : post.visibility === "PROTECTED" ? (
+                              <Badge variant="outline" className="text-[10px] font-bold bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 rounded-[6px] gap-1 shrink-0">
+                                <ShieldCheck className="h-2.5 w-2.5" />
+                                <span>Protected</span>
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] font-bold bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400 rounded-[6px] gap-1 shrink-0">
+                                <Globe className="h-2.5 w-2.5" />
+                                <span>Public</span>
+                              </Badge>
+                            )}
+
                             {post.impactMetric && (
                               <span className="hidden sm:inline-block px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                                 {post.impactMetric}
@@ -3099,6 +3631,37 @@ export default function CommunityPage() {
                               <Badge variant="outline" className="text-[10px] font-bold bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-300 rounded-[6px] shrink-0">
                                 {post.postType || "POST"}
                               </Badge>
+                            )}
+
+                            {/* Author Edit / Delete controls */}
+                            {isAuthor && !isOfficial && (
+                              <div className="flex items-center gap-1 border-l border-slate-200 dark:border-zinc-800 pl-2 ml-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingPost(post)
+                                    setEditContent(post.content)
+                                    setEditVisibility((post.visibility as any) || "PUBLIC")
+                                    setEditPostError(null)
+                                  }}
+                                  className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-emerald-500 transition-colors cursor-pointer"
+                                  title="Edit post"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (window.confirm("Are you sure you want to delete this post?")) {
+                                      deletePostMutation.mutate(post.id)
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-md hover:bg-rose-500/10 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                                  title="Delete post"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -3137,7 +3700,14 @@ export default function CommunityPage() {
 
                             {/* Comment */}
                             <button
-                              onClick={() => setActiveCommentPostId(activeCommentPostId === post.id ? null : post.id)}
+                              onClick={() => {
+                                setActiveCommentPostId(activeCommentPostId === post.id ? null : post.id)
+                                communityService.trackActivity(post.id, {
+                                  activityType: "CLICK",
+                                  postType: post.postType,
+                                  hashtags: post.hashtags,
+                                })
+                              }}
                               className="flex items-center gap-1.5 font-bold text-slate-500 dark:text-slate-400 hover:text-emerald-500 transition-colors text-xs cursor-pointer"
                             >
                               <MessageSquare className="h-4 w-4" />
@@ -3146,7 +3716,18 @@ export default function CommunityPage() {
 
                             {/* Share */}
                             <button
-                              onClick={() => alert("Post link copied!")}
+                              onClick={() => {
+                                if (typeof window !== "undefined") {
+                                  navigator.clipboard?.writeText(window.location.href)
+                                  alert("Post link copied!")
+                                  communityService.trackActivity(post.id, {
+                                    activityType: "SHARE",
+                                    postType: post.postType,
+                                    hashtags: post.hashtags,
+                                    authorId: post.wqAuthorId,
+                                  })
+                                }
+                              }}
                               className="flex items-center gap-1.5 font-bold text-slate-500 dark:text-slate-400 hover:text-emerald-500 transition-colors text-xs cursor-pointer"
                             >
                               <Share2 className="h-4 w-4" />
@@ -3321,12 +3902,21 @@ export default function CommunityPage() {
                   </h2>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setIsPostModalOpen(false)}
                   className="p-1.5 rounded-full text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
+
+              {/* Error Alert */}
+              {createPostError && (
+                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{createPostError}</span>
+                </div>
+              )}
 
               {/* Author Info */}
               <div className="flex items-center gap-3">
@@ -3343,7 +3933,7 @@ export default function CommunityPage() {
                     <VerificationBadge level={currentUser.verificationLevel || "GOLD"} />
                   </div>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Publishing to Ecosystem Community
+                    Publishing as @{currentUser.username} • {currentUser.headline}
                   </span>
                 </div>
               </div>
@@ -3357,6 +3947,85 @@ export default function CommunityPage() {
                 autoFocus
                 className="w-full text-xs bg-slate-50 dark:bg-zinc-900/90 border border-slate-200 dark:border-zinc-800 text-slate-900 dark:text-white rounded-[10px] p-3 focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none"
               />
+
+              {/* Visibility Selector */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                  Post Visibility
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVisibility("PUBLIC")}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-2.5 rounded-lg border text-xs font-bold transition-all cursor-pointer text-center",
+                      selectedVisibility === "PUBLIC"
+                        ? "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500"
+                        : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-zinc-700"
+                    )}
+                  >
+                    <Globe className="h-4 w-4 mb-1" />
+                    <span>Public</span>
+                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Visible to all</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVisibility("PROTECTED")}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-2.5 rounded-lg border text-xs font-bold transition-all cursor-pointer text-center",
+                      selectedVisibility === "PROTECTED"
+                        ? "border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500"
+                        : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-zinc-700"
+                    )}
+                  >
+                    <ShieldCheck className="h-4 w-4 mb-1" />
+                    <span>Protected</span>
+                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Auth / Hub members</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVisibility("PRIVATE")}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-2.5 rounded-lg border text-xs font-bold transition-all cursor-pointer text-center",
+                      selectedVisibility === "PRIVATE"
+                        ? "border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 ring-1 ring-rose-500"
+                        : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-zinc-700"
+                    )}
+                  >
+                    <Lock className="h-4 w-4 mb-1" />
+                    <span>Private</span>
+                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Only author</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Optional Community Hub Selection */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span>Community Hub (Optional)</span>
+                  {selectedCommunityId && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCommunityId("")}
+                      className="text-[10px] text-emerald-500 hover:underline cursor-pointer"
+                    >
+                      Clear Hub
+                    </button>
+                  )}
+                </label>
+                <select
+                  value={selectedCommunityId}
+                  onChange={(e) => setSelectedCommunityId(e.target.value)}
+                  className="w-full h-9 text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-900 dark:text-white rounded-[8px] px-2.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="">General Ecosystem Feed (No Hub)</option>
+                  {communities.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.membersCount || 1} members)
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               {/* Attachment Input */}
               <div className="space-y-1.5">
@@ -3396,6 +4065,147 @@ export default function CommunityPage() {
         </div>
       )}
 
+      {/* ─── EDIT POST MODAL ─────────────────────────────────────────────── */}
+      {editingPost && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <Card className="w-full max-w-lg rounded-[16px] border border-slate-200/80 dark:border-zinc-700/60 bg-white/80 dark:bg-[#0E1113]/85 backdrop-blur-2xl shadow-[0_25px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+            <CardContent className="p-5 space-y-4">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <Pencil className="h-5 w-5 text-emerald-500" />
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                    Edit Post
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingPost(null)
+                    setEditPostError(null)
+                  }}
+                  className="p-1.5 rounded-full text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Error Alert */}
+              {editPostError && (
+                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{editPostError}</span>
+                </div>
+              )}
+
+              {/* Author Info */}
+              <div className="flex items-center gap-3">
+                <Avatar className="h-10 w-10 rounded-[10px]">
+                  <AvatarFallback className="bg-slate-900 text-white font-bold text-xs">
+                    {getInitials(currentUser.displayName)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      {currentUser.displayName}
+                    </span>
+                    <VerificationBadge level={currentUser.verificationLevel || "GOLD"} />
+                  </div>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Editing post as author
+                  </span>
+                </div>
+              </div>
+
+              {/* Textarea */}
+              <textarea
+                placeholder="Update your post content..."
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                rows={4}
+                autoFocus
+                className="w-full text-xs bg-slate-50 dark:bg-zinc-900/90 border border-slate-200 dark:border-zinc-800 text-slate-900 dark:text-white rounded-[10px] p-3 focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none"
+              />
+
+              {/* Visibility Selector */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                  Post Visibility
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditVisibility("PUBLIC")}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-2.5 rounded-lg border text-xs font-bold transition-all cursor-pointer text-center",
+                      editVisibility === "PUBLIC"
+                        ? "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500"
+                        : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-zinc-700"
+                    )}
+                  >
+                    <Globe className="h-4 w-4 mb-1" />
+                    <span>Public</span>
+                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Visible to all</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditVisibility("PROTECTED")}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-2.5 rounded-lg border text-xs font-bold transition-all cursor-pointer text-center",
+                      editVisibility === "PROTECTED"
+                        ? "border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500"
+                        : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-zinc-700"
+                    )}
+                  >
+                    <ShieldCheck className="h-4 w-4 mb-1" />
+                    <span>Protected</span>
+                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Auth / Hub members</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditVisibility("PRIVATE")}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-2.5 rounded-lg border text-xs font-bold transition-all cursor-pointer text-center",
+                      editVisibility === "PRIVATE"
+                        ? "border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 ring-1 ring-rose-500"
+                        : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-zinc-700"
+                    )}
+                  >
+                    <Lock className="h-4 w-4 mb-1" />
+                    <span>Private</span>
+                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Only author</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-zinc-800">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setEditingPost(null)
+                    setEditPostError(null)
+                  }}
+                  className="text-xs font-bold rounded-[8px] h-9 px-4 border-slate-200 dark:border-zinc-800 cursor-pointer"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleEditPostSubmit}
+                  disabled={!editContent.trim() || updatePostMutation.isPending}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-[8px] h-9 px-5 cursor-pointer shadow-sm"
+                >
+                  {updatePostMutation.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* ─── CREATE COMMUNITY MODAL ─────────────────────────────────────── */}
       {isCreateCommunityModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -3411,12 +4221,43 @@ export default function CommunityPage() {
                   </h2>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setIsCreateCommunityModalOpen(false)}
                   className="p-1.5 rounded-full text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
+
+              {/* Creator / Owner Info */}
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
+                <Avatar className="h-9 w-9 rounded-[8px]">
+                  <AvatarFallback className="bg-slate-900 text-white font-bold text-xs">
+                    {getInitials(currentUser.displayName)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                      {currentUser.displayName}
+                    </span>
+                    <Badge className="text-[9px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 px-1 py-0 font-extrabold uppercase">
+                      Owner
+                    </Badge>
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    You will be recorded as the founding owner and initial member of this hub.
+                  </p>
+                </div>
+              </div>
+
+              {/* Error Alert */}
+              {createCommunityError && (
+                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{createCommunityError}</span>
+                </div>
+              )}
 
               {/* Community Name Input */}
               <div className="space-y-1.5">
@@ -3730,7 +4571,12 @@ export default function CommunityPage() {
         member={inspectedMember}
         isOpen={Boolean(inspectedMember)}
         onClose={() => setInspectedMember(null)}
-        isFollowing={Boolean(inspectedMember && followedUsersMap[inspectedMember.id])}
+        isFollowing={Boolean(
+          inspectedMember && (
+            followedUsersMap[inspectedMember.id] ||
+            (inspectedMember.username && followedUsersMap[inspectedMember.username])
+          )
+        )}
         onToggleFollow={toggleFollowUser}
       />
     </div>

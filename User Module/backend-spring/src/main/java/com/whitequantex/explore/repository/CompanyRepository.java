@@ -20,6 +20,15 @@ public interface CompanyRepository extends JpaRepository<CompanyEntity, UUID> {
 
     List<CompanyEntity> findByIsActiveTrueOrderByCreatedAtDesc();
 
+    @Query("SELECT SUM(c.valuationNum) FROM CompanyEntity c WHERE c.isActive = true")
+    BigDecimal sumTotalValuation();
+
+    @Query("SELECT AVG(c.trustScore) FROM CompanyEntity c WHERE c.isActive = true")
+    Double averageTrustScore();
+
+    @Query("SELECT COUNT(c) FROM CompanyEntity c WHERE c.isActive = true AND (LOWER(c.legalEntity) LIKE '%c-corp%' OR LOWER(c.legalEntity) LIKE '%inc%')")
+    Long countCCorps();
+
     @Query("SELECT c FROM CompanyEntity c WHERE c.isActive = true AND " +
            "(:query IS NULL OR :query = '' OR " +
            " LOWER(c.name) LIKE LOWER(CONCAT('%', :query, '%')) OR " +

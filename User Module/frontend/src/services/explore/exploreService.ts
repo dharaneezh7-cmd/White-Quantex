@@ -148,6 +148,11 @@ export interface ExploreOverview {
   wqRecommendations?: WqRecommendation[]
   mutualInvestmentSchemes?: MutualScheme[]
   totalRegisteredCompanies: number
+  aggregateValuation?: string
+  aggregateValuationNum?: number
+  legalEntitiesRatio?: string
+  averageTrustScore?: string
+  averageTrustScoreNum?: number
 }
 
 export interface CorporatePosition {
@@ -220,8 +225,28 @@ export interface CompanySearchParams {
 export const exploreService = {
   // ── Explore Overview (Corporate Companies) ──────────────────────────────
   async getOverview(): Promise<ExploreOverview> {
-    const res = await springApi.get<ApiResponse<ExploreOverview>>("/explore/overview")
-    return res.data.data
+    try {
+      const res = await springApi.get<ApiResponse<ExploreOverview>>("/explore/overview")
+      if (res.data?.data) {
+        return res.data.data
+      }
+    } catch {
+      // Fallback
+    }
+    return {
+      recentlyViewed: [],
+      todaysMostInvested: [],
+      todaysLeastInvested: [],
+      todaysTopGainers: [],
+      todaysTopLosers: [],
+      todaysMostActive: [],
+      todays52wHighs: [],
+      recentlyAdded: [],
+      upcomingCompanies: [],
+      wqRecommendations: [],
+      mutualInvestmentSchemes: [],
+      totalRegisteredCompanies: 0,
+    }
   },
 
   // ── Explore Companies (Corporate Issuers) ───────────────────────────────
@@ -279,66 +304,7 @@ export const exploreService = {
 
     const cleanId = id.toUpperCase().trim()
 
-    // 1. Check in REGISTERED_VENTURES_LIST
-    const venture = REGISTERED_VENTURES_LIST.find(
-      (v) =>
-        v.id === id ||
-        v.ticker.toUpperCase() === cleanId ||
-        v.cik.toUpperCase() === cleanId ||
-        v.name.toLowerCase() === id.toLowerCase() ||
-        v.shortName.toLowerCase() === id.toLowerCase()
-    )
-    if (venture) return venture
-
-    // 2. Check in MOCK_VENTURE_OPPORTUNITIES
-    const opp = MOCK_VENTURE_OPPORTUNITIES.find(
-      (o) => o.id === id || o.ticker.toUpperCase() === cleanId
-    )
-    if (opp) {
-      return {
-        id: opp.id,
-        ticker: opp.ticker,
-        name: opp.name,
-        shortName: opp.shortName,
-        legalEntity: opp.legalEntity,
-        cik: `CIK-0002100${opp.ticker.length}`,
-        sector: opp.sector,
-        subIndustry: opp.subIndustry,
-        headquarters: opp.headquarters,
-        region: "North America",
-        foundedYear: 2023,
-        ceo: opp.ceo,
-        employees: 30,
-        valuation: opp.valuation,
-        valuationNum: opp.valuationNum,
-        annualRevenue: `$${(opp.valuationNum * 0.15 / 1000000).toFixed(1)}M ARR`,
-        annualRevenueNum: Math.round(opp.valuationNum * 0.15),
-        verificationLevel: opp.verificationLevel,
-        trustScore: 95,
-        description: opp.fundingPurpose,
-        logoColor: opp.logoColor,
-        status: opp.roundType,
-        exchangeTier: "Tier-1 Venture Syndicate",
-        change24h: "+12.0%",
-        changePercent: 12.0,
-        isPositive: true,
-        marketCapGainLoss: "+$8.5M",
-        investedToday: "+$1.2M Inflow",
-        allocationPercent: opp.percentFunded,
-        tradingVolumeToday: "$3.5M Vol",
-        minInvestment: opp.minInvestment,
-        minInvestmentNum: opp.minInvestmentNum,
-        fundingPurpose: opp.fundingPurpose,
-        targetRaise: opp.targetRaise,
-        targetRaiseNum: opp.targetRaiseNum,
-        raisedAmount: opp.raisedAmount,
-        raisedAmountNum: opp.raisedAmountNum,
-        roundType: opp.roundType,
-        securityType: opp.securityType,
-      }
-    }
-
-    // 3. Check browser dynamic registrations
+    // 1. Check browser dynamic registrations
     if (typeof window !== "undefined") {
       try {
         const savedVenturesStr = localStorage.getItem("wq_registered_ventures")
@@ -517,25 +483,42 @@ export const exploreService = {
 
   // ── Upcoming Companies ───────────────────────────────────────────────────
   async getUpcomingCompanies(): Promise<UpcomingCompany[]> {
-    const res = await springApi.get<ApiResponse<UpcomingCompany[]>>("/explore/upcoming")
-    return res.data.data
+    try {
+      const res = await springApi.get<ApiResponse<UpcomingCompany[]>>("/explore/upcoming")
+      return res.data?.data || []
+    } catch {
+      return []
+    }
   },
 
   // ── WQ Recommendations ───────────────────────────────────────────────────
   async getRecommendations(): Promise<WqRecommendation[]> {
-    const res = await springApi.get<ApiResponse<WqRecommendation[]>>("/explore/recommendations")
-    return res.data.data
+    try {
+      const res = await springApi.get<ApiResponse<WqRecommendation[]>>("/explore/recommendations")
+      return res.data?.data || []
+    } catch {
+      return []
+    }
   },
 
   // ── Mutual Investment Schemes ────────────────────────────────────────────
   async getMutualSchemes(): Promise<MutualScheme[]> {
-    const res = await springApi.get<ApiResponse<MutualScheme[]>>("/explore/schemes")
-    return res.data.data
+    try {
+      const res = await springApi.get<ApiResponse<MutualScheme[]>>("/explore/schemes")
+      return res.data?.data || []
+    } catch {
+      return []
+    }
   },
 
   async getSchemeById(identifier: string): Promise<MutualScheme> {
-    const res = await springApi.get<ApiResponse<MutualScheme>>(`/explore/schemes/${identifier}`)
-    return res.data.data
+    try {
+      const res = await springApi.get<ApiResponse<MutualScheme>>(`/explore/schemes/${identifier}`)
+      if (res.data?.data) {
+        return res.data.data
+      }
+    } catch {}
+    throw new Error(`Mutual Scheme not found: ${identifier}`)
   },
 
   async recordRecentlyViewed(tickerOrId: string): Promise<void> {
@@ -555,7 +538,53 @@ export const exploreService = {
     } catch {
       // Fallback
     }
-    return MOCK_VENTURE_OPPORTUNITIES
+    if (typeof window !== "undefined") {
+      try {
+        const savedStr = localStorage.getItem("wq_registered_ventures")
+        if (savedStr) {
+          const saved: CompanySummary[] = JSON.parse(savedStr)
+          if (Array.isArray(saved) && saved.length > 0) {
+            return saved.map((v) => ({
+              id: v.id,
+              ticker: v.ticker,
+              name: v.name,
+              shortName: v.shortName,
+              legalEntity: v.legalEntity,
+              sector: v.sector,
+              subIndustry: v.subIndustry,
+              headquarters: v.headquarters,
+              ceo: v.ceo,
+              logoColor: v.logoColor,
+              valuation: v.valuation,
+              valuationNum: v.valuationNum,
+              roundType: v.roundType || "Capital Raise",
+              targetRaise: v.targetRaise || "$10,000,000",
+              targetRaiseNum: v.targetRaiseNum || 10000000,
+              raisedAmount: v.raisedAmount || "$5,000,000",
+              raisedAmountNum: v.raisedAmountNum || 5000000,
+              percentFunded: v.allocationPercent || 50,
+              minInvestment: v.minInvestment || "$25,000",
+              minInvestmentNum: v.minInvestmentNum || 25000,
+              fundingPurpose: v.fundingPurpose || v.description,
+              investorCount: 10,
+              daysRemaining: 45,
+              securityType: v.securityType || "Delaware C-Corp Preferred Equity",
+              verificationLevel: (v.verificationLevel as any) || "GOLD",
+              useOfFunds: [
+                { label: "Engineering & Product R&D", percent: 45 },
+                { label: "Go-to-Market Expansion", percent: 35 },
+                { label: "Working Capital & Reserve", percent: 20 },
+              ],
+              keyMilestones: [
+                "Delaware corporate filing completed",
+                "SEC Reg D compliance registration initiated",
+              ],
+            }))
+          }
+        }
+      } catch {}
+    }
+    return []
   },
 }
 

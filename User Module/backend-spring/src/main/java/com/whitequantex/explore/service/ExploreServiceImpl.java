@@ -4,6 +4,8 @@ import com.whitequantex.common.PagedResponse;
 import com.whitequantex.explore.dto.*;
 import com.whitequantex.explore.entity.*;
 import com.whitequantex.explore.repository.*;
+import com.whitequantex.market.dto.LiveStockQuoteDto;
+import com.whitequantex.market.service.MarketPriceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -31,6 +34,9 @@ public class ExploreServiceImpl implements ExploreService {
     private final WqRecommendationRepository wqRecommendationRepository;
     private final MutualSchemeRepository mutualSchemeRepository;
     private final UserRecentlyViewedRepository userRecentlyViewedRepository;
+    private final VentureRepository ventureRepository;
+    private final VentureMarketMetricRepository ventureMetricRepository;
+    private final MarketPriceService marketPriceService;
 
     @Override
     public ExploreOverviewDto getExploreOverview() {
@@ -39,27 +45,103 @@ public class ExploreServiceImpl implements ExploreService {
 
     @Override
     public ExploreOverviewDto getExploreOverview(UUID userId) {
-        List<CategoryCompanyDto> gainers = metricRepository.findTopGainers().stream()
-                .map(m -> mapToCategoryDto(m, m.getRankGainer(), "% MCap", m.getMarketCapGainLoss(), m.getChange24h()))
+        List<CompanyEntity> allCompanies = companyRepository.findAll();
+
+        List<CategoryCompanyDto> gainers = allCompanies.stream()
+                .filter(c -> c.getTicker() != null && marketPriceService.getQuote(c.getTicker()) != null)
+                .sorted((a, b) -> {
+                    LiveStockQuoteDto qA = marketPriceService.getQuote(a.getTicker());
+                    LiveStockQuoteDto qB = marketPriceService.getQuote(b.getTicker());
+                    return qB.getChangePercent().compareTo(qA.getChangePercent());
+                })
+                .limit(5)
+                .map(c -> {
+                    LiveStockQuoteDto q = marketPriceService.getQuote(c.getTicker());
+                    return CategoryCompanyDto.builder()
+                            .id(c.getId())
+                            .ticker(c.getTicker())
+                            .name(c.getName())
+                            .shortName(c.getShortName() != null ? c.getShortName() : c.getName())
+                            .sector(c.getSector())
+                            .valuation(c.getValuation())
+                            .change(q.getChangePercentStr())
+                            .isPositive(q.getIsPositive())
+                            .logoBg(c.getLogoColor() != null ? c.getLogoColor() : "bg-emerald-600")
+                            .logoText(c.getShortName() != null && c.getShortName().length() >= 2 ? c.getShortName().substring(0, 2).toUpperCase() : c.getTicker().substring(0, Math.min(2, c.getTicker().length())))
+                            .metricLabel("% MCap")
+                            .metricValue("+$" + q.getChangeAmount().abs().toPlainString() + "M")
+                            .build();
+                })
                 .collect(Collectors.toList());
 
-        List<CategoryCompanyDto> losers = metricRepository.findTopLosers().stream()
-                .map(m -> mapToCategoryDto(m, m.getRankLoser(), "% MCap", m.getMarketCapGainLoss(), m.getChange24h()))
+        List<CategoryCompanyDto> losers = allCompanies.stream()
+                .filter(c -> c.getTicker() != null && marketPriceService.getQuote(c.getTicker()) != null)
+                .sorted((a, b) -> {
+                    LiveStockQuoteDto qA = marketPriceService.getQuote(a.getTicker());
+                    LiveStockQuoteDto qB = marketPriceService.getQuote(b.getTicker());
+                    return qA.getChangePercent().compareTo(qB.getChangePercent());
+                })
+                .limit(5)
+                .map(c -> {
+                    LiveStockQuoteDto q = marketPriceService.getQuote(c.getTicker());
+                    return CategoryCompanyDto.builder()
+                            .id(c.getId())
+                            .ticker(c.getTicker())
+                            .name(c.getName())
+                            .shortName(c.getShortName() != null ? c.getShortName() : c.getName())
+                            .sector(c.getSector())
+                            .valuation(c.getValuation())
+                            .change(q.getChangePercentStr())
+                            .isPositive(q.getIsPositive())
+                            .logoBg(c.getLogoColor() != null ? c.getLogoColor() : "bg-rose-600")
+                            .logoText(c.getShortName() != null && c.getShortName().length() >= 2 ? c.getShortName().substring(0, 2).toUpperCase() : c.getTicker().substring(0, Math.min(2, c.getTicker().length())))
+                            .metricLabel("% MCap")
+                            .metricValue("-$" + q.getChangeAmount().abs().toPlainString() + "M")
+                            .build();
+                })
                 .collect(Collectors.toList());
 
         List<CategoryCompanyDto> mostInvested = metricRepository.findMostInvested().stream()
+                .limit(5)
                 .map(m -> mapToCategoryDto(m, m.getRankMostInvested(), "Inflow", m.getInvestedToday(), m.getChange24h()))
                 .collect(Collectors.toList());
 
         List<CategoryCompanyDto> leastInvested = metricRepository.findLeastInvested().stream()
+                .limit(5)
                 .map(m -> mapToCategoryDto(m, m.getRankLeastInvested(), "Inflow", m.getInvestedToday(), m.getChange24h()))
                 .collect(Collectors.toList());
 
-        List<CategoryCompanyDto> mostActive = metricRepository.findMostActive().stream()
-                .map(m -> mapToCategoryDto(m, m.getRankMostActive(), "Volume", m.getTradingVolumeToday(), m.getChange24h()))
+        List<CategoryCompanyDto> mostActive = allCompanies.stream()
+                .filter(c -> c.getTicker() != null && marketPriceService.getQuote(c.getTicker()) != null)
+                .sorted((a, b) -> {
+                    LiveStockQuoteDto qA = marketPriceService.getQuote(a.getTicker());
+                    LiveStockQuoteDto qB = marketPriceService.getQuote(b.getTicker());
+                    long volB = qB.getVolumeShares() != null ? qB.getVolumeShares() : 0L;
+                    long volA = qA.getVolumeShares() != null ? qA.getVolumeShares() : 0L;
+                    return Long.compare(volB, volA);
+                })
+                .limit(5)
+                .map(c -> {
+                    LiveStockQuoteDto q = marketPriceService.getQuote(c.getTicker());
+                    return CategoryCompanyDto.builder()
+                            .id(c.getId())
+                            .ticker(c.getTicker())
+                            .name(c.getName())
+                            .shortName(c.getShortName() != null ? c.getShortName() : c.getName())
+                            .sector(c.getSector())
+                            .valuation(c.getValuation())
+                            .change(q.getChangePercentStr())
+                            .isPositive(q.getIsPositive())
+                            .logoBg(c.getLogoColor() != null ? c.getLogoColor() : "bg-indigo-600")
+                            .logoText(c.getShortName() != null && c.getShortName().length() >= 2 ? c.getShortName().substring(0, 2).toUpperCase() : c.getTicker().substring(0, Math.min(2, c.getTicker().length())))
+                            .metricLabel("Volume")
+                            .metricValue(q.getVolumeStr() != null ? q.getVolumeStr() : "125,000")
+                            .build();
+                })
                 .collect(Collectors.toList());
 
         List<CategoryCompanyDto> highs = metricRepository.find52wHighs().stream()
+                .limit(5)
                 .map(m -> mapToCategoryDto(m, m.getRank52wHigh(), "Momentum", m.getChange24h(), m.getChange24h()))
                 .collect(Collectors.toList());
 
@@ -74,6 +156,7 @@ public class ExploreServiceImpl implements ExploreService {
             }
         } else {
             viewed = metricRepository.findRecentlyViewed().stream()
+                    .limit(8)
                     .map(m -> mapToCategoryDto(m, m.getRankRecentlyViewed(), "Return", m.getChange24h(), m.getChange24h()))
                     .collect(Collectors.toList());
         }
@@ -88,6 +171,18 @@ public class ExploreServiceImpl implements ExploreService {
         List<MutualSchemeDto> schemes = getMutualInvestmentSchemes();
 
         long count = companyRepository.count();
+        BigDecimal sumVal = companyRepository.sumTotalValuation();
+        if (sumVal == null) sumVal = BigDecimal.ZERO;
+        String formattedValuation = formatValuation(sumVal);
+
+        Long cCorps = companyRepository.countCCorps();
+        long cCorpsCount = cCorps != null ? cCorps : 0L;
+        int legalPct = count > 0 ? (int) Math.round((cCorpsCount * 100.0) / count) : 100;
+        String legalEntitiesRatio = legalPct + "% C-Corp / Inc";
+
+        Double avgTrust = companyRepository.averageTrustScore();
+        double avgTrustScore = avgTrust != null ? avgTrust : 90.0;
+        String formattedTrust = String.format(java.util.Locale.US, "%.1f / 100", avgTrustScore);
 
         return ExploreOverviewDto.builder()
                 .todaysTopGainers(gainers)
@@ -102,7 +197,28 @@ public class ExploreServiceImpl implements ExploreService {
                 .wqRecommendations(recommendations)
                 .mutualInvestmentSchemes(schemes)
                 .totalRegisteredCompanies(count)
+                .aggregateValuation(formattedValuation)
+                .aggregateValuationNum(sumVal)
+                .legalEntitiesRatio(legalEntitiesRatio)
+                .averageTrustScore(formattedTrust)
+                .averageTrustScoreNum(avgTrustScore)
                 .build();
+    }
+
+    private String formatValuation(BigDecimal valuation) {
+        if (valuation == null || valuation.compareTo(BigDecimal.ZERO) == 0) {
+            return "$0.00";
+        }
+        double val = valuation.doubleValue();
+        if (val >= 1_000_000_000_000.0) {
+            return String.format(java.util.Locale.US, "$%.2f Trillion", val / 1_000_000_000_000.0);
+        } else if (val >= 1_000_000_000.0) {
+            return String.format(java.util.Locale.US, "$%.2f Billion", val / 1_000_000_000.0);
+        } else if (val >= 1_000_000.0) {
+            return String.format(java.util.Locale.US, "$%.2f Million", val / 1_000_000.0);
+        } else {
+            return String.format(java.util.Locale.US, "$%,.0f", val);
+        }
     }
 
     private CategoryCompanyDto mapCompanyToCategoryDto(CompanyEntity c, Integer rank) {
@@ -185,16 +301,24 @@ public class ExploreServiceImpl implements ExploreService {
 
     @Override
     public CompanySummaryDto getCompanyById(UUID id) {
-        return companyRepository.findById(id)
+        CompanySummaryDto company = companyRepository.findById(id)
                 .map(this::mapToSummaryDto)
                 .orElse(null);
+        if (company != null) {
+            return company;
+        }
+        return getVentureById(id);
     }
 
     @Override
     public CompanySummaryDto getCompanyByTicker(String ticker) {
-        return companyRepository.findByTickerIgnoreCase(ticker)
+        CompanySummaryDto company = companyRepository.findByTickerIgnoreCase(ticker)
                 .map(this::mapToSummaryDto)
                 .orElse(null);
+        if (company != null) {
+            return company;
+        }
+        return getVentureByTicker(ticker);
     }
 
     @Override
@@ -212,21 +336,40 @@ public class ExploreServiceImpl implements ExploreService {
         }
 
         return positions.stream()
-                .map(p -> CorporatePositionDto.builder()
-                        .id(p.getId())
-                        .companyId(p.getCompany().getId())
-                        .companyName(p.getCompany().getName())
-                        .ticker(p.getCompany().getTicker())
-                        .logoColor(p.getCompany().getLogoColor())
-                        .sector(p.getCompany().getSector())
-                        .shares(p.getShares())
-                        .shareClass(p.getShareClass())
-                        .costBasis(p.getCostBasis())
-                        .currentValue(p.getCurrentValue())
-                        .unrealizedPl(p.getUnrealizedPl())
-                        .unrealizedPlPercent(p.getUnrealizedPlPercent())
-                        .ownershipPercent(p.getOwnershipPercent())
-                        .build())
+                .map(p -> {
+                    BigDecimal shares = BigDecimal.valueOf(p.getShares() != null ? p.getShares() : 0);
+                    BigDecimal costBasis = p.getCostBasis() != null ? p.getCostBasis() : BigDecimal.ZERO;
+                    String ticker = p.getCompany() != null ? p.getCompany().getTicker() : null;
+                    LiveStockQuoteDto liveQuote = ticker != null ? marketPriceService.getQuote(ticker) : null;
+
+                    BigDecimal currentPrice = liveQuote != null
+                            ? liveQuote.getPrice()
+                            : (p.getShares() != null && p.getShares() > 0 && p.getCurrentValue() != null
+                            ? p.getCurrentValue().divide(shares, 2, RoundingMode.HALF_UP)
+                            : BigDecimal.valueOf(100));
+
+                    BigDecimal currentValue = shares.multiply(currentPrice).setScale(2, RoundingMode.HALF_UP);
+                    BigDecimal unrealizedPl = currentValue.subtract(costBasis);
+                    BigDecimal unrealizedPlPercent = costBasis.compareTo(BigDecimal.ZERO) > 0
+                            ? unrealizedPl.multiply(BigDecimal.valueOf(100)).divide(costBasis, 2, RoundingMode.HALF_UP)
+                            : BigDecimal.ZERO;
+
+                    return CorporatePositionDto.builder()
+                            .id(p.getId())
+                            .companyId(p.getCompany().getId())
+                            .companyName(p.getCompany().getName())
+                            .ticker(p.getCompany().getTicker())
+                            .logoColor(p.getCompany().getLogoColor())
+                            .sector(p.getCompany().getSector())
+                            .shares(p.getShares())
+                            .shareClass(p.getShareClass())
+                            .costBasis(costBasis)
+                            .currentValue(currentValue)
+                            .unrealizedPl(unrealizedPl)
+                            .unrealizedPlPercent(unrealizedPlPercent)
+                            .ownershipPercent(p.getOwnershipPercent())
+                            .build();
+                })
                 .collect(Collectors.toList());
     }
 
@@ -474,7 +617,13 @@ public class ExploreServiceImpl implements ExploreService {
                 .status(c.getStatus())
                 .exchangeTier(c.getExchangeTier());
 
-        if (c.getMarketMetric() != null) {
+        LiveStockQuoteDto liveQuote = c.getTicker() != null ? marketPriceService.getQuote(c.getTicker()) : null;
+        if (liveQuote != null) {
+            builder.change24h(liveQuote.getChangePercentStr())
+                   .changePercent(liveQuote.getChangePercent())
+                   .isPositive(liveQuote.getIsPositive())
+                   .tradingVolumeToday(liveQuote.getVolumeStr());
+        } else if (c.getMarketMetric() != null) {
             CompanyMarketMetricEntity m = c.getMarketMetric();
             builder.change24h(m.getChange24h())
                    .changePercent(m.getChangePercent())
@@ -500,6 +649,10 @@ public class ExploreServiceImpl implements ExploreService {
                 ? c.getShortName().substring(0, 2).toUpperCase()
                 : c.getTicker().substring(0, Math.min(2, c.getTicker().length()));
 
+        LiveStockQuoteDto liveQuote = c.getTicker() != null ? marketPriceService.getQuote(c.getTicker()) : null;
+        String effectiveChange = liveQuote != null ? liveQuote.getChangePercentStr() : change;
+        Boolean effectiveIsPositive = liveQuote != null ? liveQuote.getIsPositive() : (m.getIsPositive() != null ? m.getIsPositive() : true);
+
         return CategoryCompanyDto.builder()
                 .id(c.getId())
                 .rank(rank)
@@ -511,13 +664,419 @@ public class ExploreServiceImpl implements ExploreService {
                 .sector(c.getSector())
                 .metricLabel(metricLabel)
                 .metricValue(metricValue)
-                .change(change)
-                .isPositive(m.getIsPositive())
+                .change(effectiveChange)
+                .isPositive(effectiveIsPositive)
                 .valuation(c.getValuation())
                 .investedToday(m.getInvestedToday())
                 .percentFunded(m.getAllocationPercent())
-                .volume(m.getTradingVolumeToday())
+                .volume(liveQuote != null ? liveQuote.getVolumeStr() : m.getTradingVolumeToday())
                 .cik(c.getCik())
                 .build();
     }
+
+    @Override
+    public ExploreOverviewDto getVenturesOverview() {
+        return getVenturesOverview(null);
+    }
+
+    @Override
+    public ExploreOverviewDto getVenturesOverview(UUID userId) {
+        List<VentureEntity> allVentures = ventureRepository.findAll();
+
+        List<CategoryCompanyDto> gainers = allVentures.stream()
+                .filter(v -> v.getTicker() != null && marketPriceService.getQuote(v.getTicker()) != null)
+                .sorted((a, b) -> {
+                    LiveStockQuoteDto qA = marketPriceService.getQuote(a.getTicker());
+                    LiveStockQuoteDto qB = marketPriceService.getQuote(b.getTicker());
+                    return qB.getChangePercent().compareTo(qA.getChangePercent());
+                })
+                .limit(5)
+                .map(v -> {
+                    LiveStockQuoteDto q = marketPriceService.getQuote(v.getTicker());
+                    return CategoryCompanyDto.builder()
+                            .id(v.getId())
+                            .ticker(v.getTicker())
+                            .name(v.getName())
+                            .shortName(v.getShortName() != null ? v.getShortName() : v.getName())
+                            .sector(v.getSector())
+                            .valuation(v.getValuation())
+                            .change(q.getChangePercentStr())
+                            .isPositive(q.getIsPositive())
+                            .logoBg(v.getLogoColor() != null ? v.getLogoColor() : "bg-purple-600")
+                            .logoText(v.getShortName() != null && v.getShortName().length() >= 2 ? v.getShortName().substring(0, 2).toUpperCase() : v.getTicker().substring(0, Math.min(2, v.getTicker().length())))
+                            .metricLabel("% MCap")
+                            .metricValue("+$" + q.getChangeAmount().abs().toPlainString() + "M")
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        List<CategoryCompanyDto> losers = allVentures.stream()
+                .filter(v -> v.getTicker() != null && marketPriceService.getQuote(v.getTicker()) != null)
+                .sorted((a, b) -> {
+                    LiveStockQuoteDto qA = marketPriceService.getQuote(a.getTicker());
+                    LiveStockQuoteDto qB = marketPriceService.getQuote(b.getTicker());
+                    return qA.getChangePercent().compareTo(qB.getChangePercent());
+                })
+                .limit(5)
+                .map(v -> {
+                    LiveStockQuoteDto q = marketPriceService.getQuote(v.getTicker());
+                    return CategoryCompanyDto.builder()
+                            .id(v.getId())
+                            .ticker(v.getTicker())
+                            .name(v.getName())
+                            .shortName(v.getShortName() != null ? v.getShortName() : v.getName())
+                            .sector(v.getSector())
+                            .valuation(v.getValuation())
+                            .change(q.getChangePercentStr())
+                            .isPositive(q.getIsPositive())
+                            .logoBg(v.getLogoColor() != null ? v.getLogoColor() : "bg-rose-600")
+                            .logoText(v.getShortName() != null && v.getShortName().length() >= 2 ? v.getShortName().substring(0, 2).toUpperCase() : v.getTicker().substring(0, Math.min(2, v.getTicker().length())))
+                            .metricLabel("% MCap")
+                            .metricValue("-$" + q.getChangeAmount().abs().toPlainString() + "M")
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        List<CategoryCompanyDto> mostInvested = ventureMetricRepository.findMostInvested().stream()
+                .limit(5)
+                .map(m -> mapVentureMetricToCategoryDto(m, m.getRankMostInvested(), "Inflow", m.getInvestedToday(), m.getChange24h()))
+                .collect(Collectors.toList());
+
+        List<CategoryCompanyDto> leastInvested = ventureMetricRepository.findLeastInvested().stream()
+                .limit(5)
+                .map(m -> mapVentureMetricToCategoryDto(m, m.getRankLeastInvested(), "Inflow", m.getInvestedToday(), m.getChange24h()))
+                .collect(Collectors.toList());
+
+        List<CategoryCompanyDto> mostActive = allVentures.stream()
+                .filter(v -> v.getTicker() != null && marketPriceService.getQuote(v.getTicker()) != null)
+                .sorted((a, b) -> {
+                    LiveStockQuoteDto qA = marketPriceService.getQuote(a.getTicker());
+                    LiveStockQuoteDto qB = marketPriceService.getQuote(b.getTicker());
+                    long volB = qB.getVolumeShares() != null ? qB.getVolumeShares() : 0L;
+                    long volA = qA.getVolumeShares() != null ? qA.getVolumeShares() : 0L;
+                    return Long.compare(volB, volA);
+                })
+                .limit(5)
+                .map(v -> {
+                    LiveStockQuoteDto q = marketPriceService.getQuote(v.getTicker());
+                    return CategoryCompanyDto.builder()
+                            .id(v.getId())
+                            .ticker(v.getTicker())
+                            .name(v.getName())
+                            .shortName(v.getShortName() != null ? v.getShortName() : v.getName())
+                            .sector(v.getSector())
+                            .valuation(v.getValuation())
+                            .change(q.getChangePercentStr())
+                            .isPositive(q.getIsPositive())
+                            .logoBg(v.getLogoColor() != null ? v.getLogoColor() : "bg-indigo-600")
+                            .logoText(v.getShortName() != null && v.getShortName().length() >= 2 ? v.getShortName().substring(0, 2).toUpperCase() : v.getTicker().substring(0, Math.min(2, v.getTicker().length())))
+                            .metricLabel("Volume")
+                            .metricValue(q.getVolumeStr() != null ? q.getVolumeStr() : "110,000")
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        List<CategoryCompanyDto> highs = ventureMetricRepository.find52wHighs().stream()
+                .limit(5)
+                .map(m -> mapVentureMetricToCategoryDto(m, m.getRank52wHigh(), "Momentum", m.getChange24h(), m.getChange24h()))
+                .collect(Collectors.toList());
+
+        List<CategoryCompanyDto> viewed = ventureMetricRepository.findRecentlyViewed().stream()
+                .limit(8)
+                .map(m -> mapVentureMetricToCategoryDto(m, m.getRankRecentlyViewed(), "Return", m.getChange24h(), m.getChange24h()))
+                .collect(Collectors.toList());
+
+        List<CompanySummaryDto> recentlyAdded = ventureRepository.findByIsActiveTrueOrderByCreatedAtDesc().stream()
+                .limit(10)
+                .map(this::mapVentureToSummaryDto)
+                .collect(Collectors.toList());
+
+        long count = ventureRepository.count();
+        BigDecimal sumVal = ventureRepository.sumTotalValuation();
+        if (sumVal == null) sumVal = BigDecimal.ZERO;
+        String formattedValuation = formatValuation(sumVal);
+
+        Long cCorps = ventureRepository.countCCorps();
+        long cCorpsCount = cCorps != null ? cCorps : 0L;
+        int legalPct = count > 0 ? (int) Math.round((cCorpsCount * 100.0) / count) : 100;
+        String legalEntitiesRatio = legalPct + "% C-Corp / Inc";
+
+        Double avgTrust = ventureRepository.averageTrustScore();
+        double avgTrustScore = avgTrust != null ? avgTrust : 88.0;
+        String formattedTrust = String.format(java.util.Locale.US, "%.1f / 100", avgTrustScore);
+
+        return ExploreOverviewDto.builder()
+                .todaysTopGainers(gainers)
+                .todaysTopLosers(losers)
+                .todaysMostInvested(mostInvested)
+                .todaysLeastInvested(leastInvested)
+                .todaysMostActive(mostActive)
+                .todays52wHighs(highs)
+                .recentlyViewed(viewed)
+                .recentlyAdded(recentlyAdded)
+                .upcomingCompanies(List.of())
+                .wqRecommendations(List.of())
+                .mutualInvestmentSchemes(List.of())
+                .totalRegisteredCompanies(count)
+                .aggregateValuation(formattedValuation)
+                .aggregateValuationNum(sumVal)
+                .legalEntitiesRatio(legalEntitiesRatio)
+                .averageTrustScore(formattedTrust)
+                .averageTrustScoreNum(avgTrustScore)
+                .build();
+    }
+
+    @Override
+    public PagedResponse<CompanySummaryDto> searchVentures(
+            String query,
+            String sector,
+            String tier,
+            BigDecimal minValuation,
+            BigDecimal maxValuation,
+            String letter,
+            String sortBy,
+            String sortDirection,
+            int page,
+            int size
+    ) {
+        String sortField = "name";
+        if ("valuation".equalsIgnoreCase(sortBy)) {
+            sortField = "valuationNum";
+        } else if ("founded".equalsIgnoreCase(sortBy)) {
+            sortField = "foundedYear";
+        } else if ("employees".equalsIgnoreCase(sortBy)) {
+            sortField = "employees";
+        } else if ("revenue".equalsIgnoreCase(sortBy)) {
+            sortField = "annualRevenueNum";
+        } else if ("targetRaise".equalsIgnoreCase(sortBy)) {
+            sortField = "targetRaiseNum";
+        }
+
+        Sort.Direction direction = "desc".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC;
+        Sort sort = Sort.by(direction, sortField);
+        PageRequest pageRequest = PageRequest.of(Math.max(0, page), Math.max(1, size), sort);
+
+        Page<VentureEntity> venturePage = ventureRepository.searchVentures(
+                query,
+                sector,
+                tier,
+                minValuation,
+                maxValuation,
+                letter,
+                pageRequest
+        );
+
+        List<CompanySummaryDto> dtos = venturePage.getContent().stream()
+                .map(this::mapVentureToSummaryDto)
+                .collect(Collectors.toList());
+
+        return PagedResponse.<CompanySummaryDto>builder()
+                .content(dtos)
+                .number(venturePage.getNumber())
+                .size(venturePage.getSize())
+                .totalElements(venturePage.getTotalElements())
+                .totalPages(venturePage.getTotalPages())
+                .first(venturePage.isFirst())
+                .last(venturePage.isLast())
+                .build();
+    }
+
+    @Override
+    public CompanySummaryDto getVentureById(UUID id) {
+        return ventureRepository.findById(id)
+                .map(this::mapVentureToSummaryDto)
+                .orElse(null);
+    }
+
+    @Override
+    public CompanySummaryDto getVentureByTicker(String ticker) {
+        return ventureRepository.findByTickerIgnoreCase(ticker)
+                .map(this::mapVentureToSummaryDto)
+                .orElse(null);
+    }
+
+    private CompanySummaryDto mapVentureToSummaryDto(VentureEntity v) {
+        CompanySummaryDto.CompanySummaryDtoBuilder builder = CompanySummaryDto.builder()
+                .id(v.getId())
+                .ticker(v.getTicker())
+                .name(v.getName())
+                .shortName(v.getShortName())
+                .legalEntity(v.getLegalEntity())
+                .cik(v.getCik())
+                .sector(v.getSector())
+                .subIndustry(v.getSubIndustry())
+                .headquarters(v.getHeadquarters())
+                .region(v.getRegion())
+                .foundedYear(v.getFoundedYear())
+                .ceo(v.getCeo())
+                .employees(v.getEmployees())
+                .valuation(v.getValuation())
+                .valuationNum(v.getValuationNum())
+                .annualRevenue(v.getAnnualRevenue())
+                .annualRevenueNum(v.getAnnualRevenueNum())
+                .verificationLevel(v.getVerificationLevel())
+                .trustScore(v.getTrustScore())
+                .description(v.getDescription())
+                .logoColor(v.getLogoColor())
+                .status(v.getStatus())
+                .exchangeTier(v.getExchangeTier())
+                .roundType(v.getRoundType())
+                .targetRaise(v.getTargetRaise())
+                .targetRaiseNum(v.getTargetRaiseNum())
+                .raisedAmount(v.getRaisedAmount())
+                .raisedAmountNum(v.getRaisedAmountNum())
+                .minInvestment(v.getMinInvestment())
+                .minInvestmentNum(v.getMinInvestmentNum())
+                .fundingPurpose(v.getFundingPurpose())
+                .securityType(v.getSecurityType());
+
+        LiveStockQuoteDto liveQuote = v.getTicker() != null ? marketPriceService.getQuote(v.getTicker()) : null;
+        if (liveQuote != null) {
+            builder.change24h(liveQuote.getChangePercentStr())
+                   .changePercent(liveQuote.getChangePercent())
+                   .isPositive(liveQuote.getIsPositive())
+                   .tradingVolumeToday(liveQuote.getVolumeStr());
+        } else if (v.getMarketMetric() != null) {
+            VentureMarketMetricEntity m = v.getMarketMetric();
+            builder.change24h(m.getChange24h())
+                   .changePercent(m.getChangePercent())
+                   .isPositive(m.getIsPositive())
+                   .marketCapGainLoss(m.getMarketCapGainLoss())
+                   .investedToday(m.getInvestedToday())
+                   .allocationPercent(m.getAllocationPercent())
+                   .tradingVolumeToday(m.getTradingVolumeToday());
+        }
+
+        return builder.build();
+    }
+
+    private CategoryCompanyDto mapVentureMetricToCategoryDto(
+            VentureMarketMetricEntity m,
+            Integer rank,
+            String metricLabel,
+            String metricValue,
+            String change
+    ) {
+        VentureEntity v = m.getVenture();
+        String logoText = v.getShortName() != null && v.getShortName().length() >= 2
+                ? v.getShortName().substring(0, 2).toUpperCase()
+                : v.getTicker().substring(0, Math.min(2, v.getTicker().length()));
+
+        LiveStockQuoteDto liveQuote = v.getTicker() != null ? marketPriceService.getQuote(v.getTicker()) : null;
+        String effectiveChange = liveQuote != null ? liveQuote.getChangePercentStr() : change;
+        Boolean effectiveIsPositive = liveQuote != null ? liveQuote.getIsPositive() : (m.getIsPositive() != null ? m.getIsPositive() : true);
+
+        return CategoryCompanyDto.builder()
+                .id(v.getId())
+                .rank(rank)
+                .name(v.getName())
+                .shortName(v.getShortName())
+                .ticker(v.getTicker())
+                .logoText(logoText)
+                .logoBg(v.getLogoColor())
+                .sector(v.getSector())
+                .metricLabel(metricLabel)
+                .metricValue(metricValue)
+                .change(effectiveChange)
+                .isPositive(effectiveIsPositive)
+                .valuation(v.getValuation())
+                .investedToday(m.getInvestedToday())
+                .percentFunded(m.getAllocationPercent())
+                .volume(liveQuote != null ? liveQuote.getVolumeStr() : m.getTradingVolumeToday())
+                .cik(v.getCik())
+                .minInvestment(v.getMinInvestment())
+                .minInvestmentNum(v.getMinInvestmentNum())
+                .fundingPurpose(v.getFundingPurpose())
+                .targetRaise(v.getTargetRaise())
+                .roundType(v.getRoundType())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public CorporateOrderDto createOrder(UUID userId, CreateOrderRequest request) {
+        CompanyEntity company = null;
+        if (request.getCompanyId() != null && !request.getCompanyId().isBlank()) {
+            try {
+                UUID cid = UUID.fromString(request.getCompanyId());
+                company = companyRepository.findById(cid).orElse(null);
+            } catch (Exception ignored) {}
+        }
+        if (company == null && request.getTicker() != null && !request.getTicker().isBlank()) {
+            company = companyRepository.findByTickerIgnoreCase(request.getTicker()).orElse(null);
+        }
+        if (company == null) {
+            company = companyRepository.findAll().stream().findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("No corporate issuer available for order placement"));
+        }
+
+        UUID orderId = UUID.randomUUID();
+        String ticker = company.getTicker() != null ? company.getTicker() : "WQ";
+        String orderNum = "ORD-" + ticker + "-" + (System.currentTimeMillis() % 1000000);
+        BigDecimal price = request.getPricePerShare() != null ? request.getPricePerShare() : BigDecimal.valueOf(25.00);
+        BigDecimal amount = request.getAmount() != null ? request.getAmount() : BigDecimal.valueOf(25000.00);
+        Long shares = request.getShares() != null ? request.getShares() : (amount.divideToIntegralValue(price).longValue());
+        String shareClass = request.getShareClass() != null && !request.getShareClass().isBlank() ? request.getShareClass() : "Series Seed Preferred";
+        String type = request.getType() != null && !request.getType().isBlank() ? request.getType() : "PRIMARY_SUBSCRIPTION";
+
+        CorporateOrderEntity order = CorporateOrderEntity.builder()
+                .id(orderId)
+                .userId(userId)
+                .company(company)
+                .orderNumber(orderNum)
+                .type(type)
+                .shareClass(shareClass)
+                .shares(shares)
+                .pricePerShare(price)
+                .totalAmount(amount)
+                .status("FILLED")
+                .settlementStatus("SETTLED")
+                .executedAt(java.time.Instant.now())
+                .createdAt(java.time.Instant.now())
+                .build();
+
+        order = orderRepository.save(order);
+
+        CorporatePositionEntity position = positionRepository.findByUserIdAndCompanyId(userId, company.getId()).orElse(null);
+        if (position == null) {
+            position = CorporatePositionEntity.builder()
+                    .id(UUID.randomUUID())
+                    .userId(userId)
+                    .company(company)
+                    .shares(shares)
+                    .shareClass(shareClass)
+                    .costBasis(amount)
+                    .currentValue(amount)
+                    .unrealizedPl(BigDecimal.ZERO)
+                    .unrealizedPlPercent(BigDecimal.ZERO)
+                    .ownershipPercent(BigDecimal.valueOf(0.05))
+                    .createdAt(java.time.Instant.now())
+                    .updatedAt(java.time.Instant.now())
+                    .build();
+        } else {
+            position.setShares(position.getShares() + shares);
+            position.setCostBasis(position.getCostBasis().add(amount));
+            position.setCurrentValue(position.getCurrentValue().add(amount));
+            position.setUpdatedAt(java.time.Instant.now());
+        }
+        positionRepository.save(position);
+
+        return CorporateOrderDto.builder()
+                .id(order.getId())
+                .companyId(company.getId())
+                .companyName(company.getName())
+                .ticker(company.getTicker())
+                .logoColor(company.getLogoColor())
+                .orderNumber(order.getOrderNumber())
+                .type(order.getType())
+                .shareClass(order.getShareClass())
+                .shares(order.getShares())
+                .pricePerShare(order.getPricePerShare())
+                .totalAmount(order.getTotalAmount())
+                .status(order.getStatus())
+                .settlementStatus(order.getSettlementStatus())
+                .executedAt(order.getExecutedAt())
+                .build();
+    }
 }
+

@@ -7,7 +7,7 @@ import { Separator } from "../ui/separator"
 export const Footer = React.memo(function Footer() {
   const location = useLocation()
 
-  if (location.pathname.startsWith("/community")) {
+  if (location.pathname.startsWith("/community") || location.pathname.startsWith("/messages")) {
     return null
   }
 

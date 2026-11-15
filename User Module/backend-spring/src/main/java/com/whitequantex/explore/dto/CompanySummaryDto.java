@@ -41,4 +41,15 @@ public class CompanySummaryDto {
     private String investedToday;
     private Integer allocationPercent;
     private String tradingVolumeToday;
+
+    // Venture-specific fundraising fields
+    private String roundType;
+    private String targetRaise;
+    private BigDecimal targetRaiseNum;
+    private String raisedAmount;
+    private BigDecimal raisedAmountNum;
+    private String minInvestment;
+    private BigDecimal minInvestmentNum;
+    private String fundingPurpose;
+    private String securityType;
 }

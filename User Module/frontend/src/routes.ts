@@ -48,7 +48,9 @@ export default [
   route("profile", "app/profile/page.tsx"),
   route("profile/saved", "app/profile/saved/page.tsx"),
   route("profile/activity", "app/profile/activity/page.tsx"),
-  route("messages", "app/messages/page.tsx"),
+  route("profile/:username", "app/profile/[username]/page.tsx", { id: "profile-username" }),
+  route("profile/view", "app/profile/view/page.tsx", { id: "profile-view" }),
+  route("messages/:conversationId?", "app/messages/page.tsx", { id: "messages-page" }),
   route("notifications", "app/notifications/page.tsx"),
   route("settings", "app/settings/page.tsx"),
 

@@ -30,12 +30,22 @@ export type StartupStage =
 
 export type VerificationLevel = "NONE" | "BRONZE" | "SILVER" | "GOLD" | "PLATINUM"
 
-export type KycStatus = "NONE" | "PENDING" | "APPROVED" | "REJECTED"
+export type KycStatus =
+  | "NOT_STARTED"
+  | "DRAFT"
+  | "SUBMITTED"
+  | "UNDER_REVIEW"
+  | "ACTION_REQUIRED"
+  | "APPROVED"
+  | "REJECTED"
+  | "NONE"
+  | "PENDING"
 
 export type PostType = "TEXT" | "IMAGE" | "VIDEO" | "POLL" | "LINK"
 
 export type Visibility =
   | "PUBLIC"
+  | "PROTECTED"
   | "FOLLOWERS"
   | "PRIVATE"
   | "COMPANY_TEAM"
@@ -327,11 +337,16 @@ export interface Post {
   bookmarksCount: number
   isLiked: boolean
   isBookmarked: boolean
+  isAuthor?: boolean
+  recommendationReason?: string
+  recommendationScore?: number
+  matchedTag?: string
   createdAt: string
   updatedAt: string
 }
 
 export interface PostAuthor {
+  id?: string
   wqUserId: string
   displayName: string
   username: string
@@ -367,15 +382,21 @@ export interface Community {
   coverImageUrl?: string
   iconUrl?: string
   memberCount: number
+  membersCount?: number
   postCount: number
   isPrivate: boolean
-  rules: CommunityRule[]
+  rules: CommunityRule[] | string[]
   categories: string[]
   createdBy: string
+  ownerId?: string
+  ownerName?: string
+  ownerUsername?: string
+  isOwner?: boolean
+  isJoined?: boolean
   isMember?: boolean
   isModeratorOrAdmin?: boolean
   createdAt: string
-  updatedAt: string
+  updatedAt?: string
 }
 
 export interface CommunityRule {
@@ -482,6 +503,64 @@ export interface PlatformStats {
 }
 
 // ── Verification ──────────────────────────────────────────────────────────────
+
+export interface KycStatusResponse {
+  userId?: string
+  kycStatus: KycStatus
+  verificationLevel: VerificationLevel
+  trustScore: number
+  canInvest: boolean
+  isApproved: boolean
+  isEmailVerified: boolean
+  applicationId?: string
+  submittedAt?: string
+  reviewedAt?: string
+  actionRequiredReason?: string
+  rejectionReason?: string
+  verificationSource?: string
+}
+
+export interface KycApplicationData {
+  id?: string
+  applicationId?: string
+  userId?: string
+  userEmail?: string
+  legalFirstName: string
+  legalLastName: string
+  legalFullName?: string
+  dateOfBirth: string
+  residentialAddress: string
+  city?: string
+  stateProvince?: string
+  postalCode?: string
+  country: string
+  nationality: string
+  idType: string
+  idNumber?: string
+  idNumberMasked?: string
+  phoneNumber?: string
+  documentType?: string
+  documentFileName?: string
+  documentStoragePath?: string
+  documentMimeType?: string
+  documentFileSize?: number
+  proofOfAddressFileName?: string
+  proofOfAddressStoragePath?: string
+  declarationAccepted: boolean
+  consentAccepted: boolean
+  status: KycStatus
+  verificationSource?: string
+  reviewerId?: string
+  reviewerNotes?: string
+  actionRequiredReason?: string
+  rejectionReason?: string
+  auditLog?: string
+  submittedAt?: string
+  reviewedAt?: string
+  approvedAt?: string
+  createdAt?: string
+  updatedAt?: string
+}
 
 export interface KycVerification {
   id: string

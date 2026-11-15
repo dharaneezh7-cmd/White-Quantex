@@ -448,7 +448,7 @@ async function seedMongoDBPosts() {
     const postDate = new Date(now - hoursAgo * 3600000)
 
     const likes = 12 + Math.floor(Math.random() * 320)
-    const comments = 2 + Math.floor(Math.random() * 45)
+    const comments = 0
     const shares = 1 + Math.floor(Math.random() * 28)
     const bookmarks = 4 + Math.floor(Math.random() * 65)
 

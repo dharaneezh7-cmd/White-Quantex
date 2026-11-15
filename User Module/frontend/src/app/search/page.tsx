@@ -16,7 +16,7 @@ const SAMPLE_POSTS = [
     content: "Excited to share that NovaMind AI has officially crossed 100k daily active inference requests! Huge milestone for our engineering team.",
     postType: "IMAGE",
     likesCount: 142,
-    commentsCount: 28,
+    commentsCount: 0,
   },
   {
     id: "post-search-2",
@@ -24,7 +24,7 @@ const SAMPLE_POSTS = [
     content: "We're expanding our smart grid pilot across 5 European municipal hubs! Looking to connect with B2B utility partners.",
     postType: "TEXT",
     likesCount: 89,
-    commentsCount: 14,
+    commentsCount: 0,
   },
   {
     id: "post-search-3",
@@ -32,7 +32,7 @@ const SAMPLE_POSTS = [
     content: "Key takeaway from our latest Venture Report: AI infrastructure startups focusing on vertical domain compliance are outperforming horizontal models.",
     postType: "TEXT",
     likesCount: 230,
-    commentsCount: 45,
+    commentsCount: 0,
   },
 ]
 

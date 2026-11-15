@@ -8,13 +8,14 @@ import communitiesRouter from "./routes/communities.mjs"
 import followsRouter from "./routes/follows.mjs"
 import membersRouter from "./routes/members.mjs"
 import notificationsRouter from "./routes/notifications.mjs"
+import messagesRouter from "./routes/messages.mjs"
 
 const app = express()
 
 app.use(helmet({ contentSecurityPolicy: false }))
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:7000",
+    origin: (origin, callback) => callback(null, true),
     credentials: true,
   })
 )
@@ -26,6 +27,7 @@ app.use("/api/communities", communitiesRouter)
 app.use("/api/follows", followsRouter)
 app.use("/api/members", membersRouter)
 app.use("/api/notifications", notificationsRouter)
+app.use("/api/messages", messagesRouter)
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Node API route not found" })

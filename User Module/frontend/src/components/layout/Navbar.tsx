@@ -15,6 +15,7 @@ import {
   Bookmark,
   Activity,
   HelpCircle,
+  MessageSquare,
 } from "lucide-react"
 import { cn, getInitials } from "../../lib/utils"
 import { NAV_LINKS } from "../../constants"
@@ -129,6 +130,18 @@ export const Navbar = React.memo(function Navbar() {
           >
             <Search className="h-4 w-4 text-slate-700 dark:text-white" />
             <span className="sr-only">Search</span>
+          </Button>
+
+          {/* Direct Messages */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/messages")}
+            className="hidden h-9 w-9 px-0 text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 sm:flex relative"
+            title="Encrypted Messages"
+          >
+            <MessageSquare className="h-4 w-4" />
+            <span className="sr-only">Messages</span>
           </Button>
 
           {/* Notifications */}

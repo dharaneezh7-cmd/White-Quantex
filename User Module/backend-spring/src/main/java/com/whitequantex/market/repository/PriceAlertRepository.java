@@ -1,0 +1,14 @@
+package com.whitequantex.market.repository;
+
+import com.whitequantex.market.entity.PriceAlertEntity;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.UUID;
+
+@Repository
+public interface PriceAlertRepository extends JpaRepository<PriceAlertEntity, UUID> {
+    List<PriceAlertEntity> findByUserIdAndEnabledTrue(UUID userId);
+    List<PriceAlertEntity> findBySymbolIgnoreCaseAndEnabledTrue(String symbol);
+}

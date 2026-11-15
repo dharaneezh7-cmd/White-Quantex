@@ -165,30 +165,30 @@ export default function VenturesPage() {
 
   // Aggregate venture stats
   const totalRaisedAcrossRounds = useMemo(() => {
-    return ventureOpportunities.reduce((acc, curr) => acc + (curr.raisedAmountNum || 0), 0) || 18450000
+    return ventureOpportunities.reduce((acc, curr) => acc + (curr.raisedAmountNum || 0), 0)
   }, [ventureOpportunities])
 
   const totalTargetAcrossRounds = useMemo(() => {
-    return ventureOpportunities.reduce((acc, curr) => acc + (curr.targetRaiseNum || 0), 0) || 45000000
+    return ventureOpportunities.reduce((acc, curr) => acc + (curr.targetRaiseNum || 0), 0)
   }, [ventureOpportunities])
 
   // ── Merged Live Spring Boot Overview Datasets ──
-  const liveMostInvested = backendOverview?.todaysMostInvested || []
-  const liveLeastInvested = backendOverview?.todaysLeastInvested || []
-  const liveTopGainers = backendOverview?.todaysTopGainers || []
-  const liveTopLosers = backendOverview?.todaysTopLosers || []
-  const liveMostActive = backendOverview?.todaysMostActive || []
-  const liveNewHighs = backendOverview?.todays52wHighs || []
+  const liveMostInvested = (backendOverview?.todaysMostInvested || []).slice(0, 5)
+  const liveLeastInvested = (backendOverview?.todaysLeastInvested || []).slice(0, 5)
+  const liveTopGainers = (backendOverview?.todaysTopGainers || []).slice(0, 5)
+  const liveTopLosers = (backendOverview?.todaysTopLosers || []).slice(0, 5)
+  const liveMostActive = (backendOverview?.todaysMostActive || []).slice(0, 5)
+  const liveNewHighs = (backendOverview?.todays52wHighs || []).slice(0, 5)
 
-  const liveRecentlyViewed = (backendOverview?.recentlyViewed || []).map((c) => ({
+  const liveRecentlyViewed = (backendOverview?.recentlyViewed || []).slice(0, 8).map((c) => ({
     id: String(c.id),
     name: c.name,
     shortName: c.shortName,
     ticker: c.ticker,
     sector: c.sector,
     status: "Active Trading",
-    valuation: c.valuation || "$42.5M",
-    change: c.change || "+5.0%",
+    valuation: c.valuation || "N/A",
+    change: c.change || "0.0%",
     isPositive: c.isPositive !== false,
     logoColor: c.logoBg || "bg-indigo-600",
   }))
@@ -242,7 +242,7 @@ export default function VenturesPage() {
     instrument: ord.shareClass || "Class A Common",
     amount: `$${(ord.totalAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
     shares: `${(ord.shares ?? 0).toLocaleString()} @ $${(ord.pricePerShare ?? 0).toFixed(2)}`,
-    date: ord.executedAt ? ord.executedAt.replace("T", " ").slice(0, 19) : "2026-09-13 10:00:00",
+    date: ord.executedAt ? ord.executedAt.replace("T", " ").slice(0, 19) : "Pending",
     status: ord.status,
     statusLabel: ord.status === "FILLED" ? "Executed & Settled" : "Pending Escrow Signature",
     badge: ord.status === "FILLED" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500",
@@ -711,7 +711,7 @@ export default function VenturesPage() {
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-full flex items-center gap-1">
                   <ShieldCheck className="h-3.5 w-3.5" />
-                  {(backendOverview?.totalRegisteredCompanies || allVentures.length || 30)} Verified Ventures
+                  {(backendOverview?.totalRegisteredCompanies || allVentures.length || 0)} Verified Ventures
                 </span>
                 <span className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400 hidden sm:inline">
                   SEC Reg D / CIK Verified
@@ -843,7 +843,10 @@ export default function VenturesPage() {
           <ExploreIndexTab
             allCompanies={allVentures}
             filteredCompaniesIndex={filteredVenturesIndex}
-            totalRegisteredCount={backendOverview?.totalRegisteredCompanies || allVentures.length || 30}
+            totalRegisteredCount={backendOverview?.totalRegisteredCompanies || allVentures.length || 0}
+            aggregateValuation={backendOverview?.aggregateValuation}
+            legalEntitiesRatio={backendOverview?.legalEntitiesRatio}
+            averageTrustScore={backendOverview?.averageTrustScore}
             indexSearchQuery={indexSearchQuery}
             setIndexSearchQuery={setIndexSearchQuery}
             indexSortBy={indexSortBy}

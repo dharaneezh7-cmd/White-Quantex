@@ -3,6 +3,7 @@ import { Post, Comment, Community, ApiResponse, PagedResponse } from "@/types"
 
 export interface CommunityMember {
   id: string
+  wqUserId?: string
   name: string
   username: string
   headline: string
@@ -49,6 +50,86 @@ export const communityService = {
     return res.data.data
   },
 
+  /**
+   * Algorithmic recommendation feed tailored to user activity & preferred topics/types.
+   * Changes dynamically whenever page is refreshed or refreshSeed is updated.
+   */
+  async getSuggestedFeed(
+    page = 0,
+    size = 20,
+    options: { refreshSeed?: string | number; filter?: string; query?: string } = {}
+  ): Promise<PagedResponse<Post> & {
+    refreshSeed?: string
+    topTags?: Array<{ tag: string; score: number }>
+    topPostTypes?: Array<{ type: string; score: number }>
+    hasPersonalization?: boolean
+  }> {
+    const params = new URLSearchParams()
+    params.set("page", String(page))
+    params.set("size", String(size))
+    if (options.refreshSeed) params.set("refreshSeed", String(options.refreshSeed))
+    if (options.filter) params.set("filter", options.filter)
+    if (options.query) params.set("query", options.query)
+
+    const res = await nodeApi.get<ApiResponse<any>>(`/posts/suggested?${params.toString()}`)
+    return res.data.data
+  },
+
+  /**
+   * Track specific user action (VIEW, CLICK, LIKE, COMMENT, BOOKMARK, SHARE, PROFILE_VIEW)
+   */
+  async trackActivity(
+    postId: string,
+    data: {
+      activityType: "VIEW" | "CLICK" | "LIKE" | "COMMENT" | "BOOKMARK" | "SHARE" | "PROFILE_VIEW" | string
+      postType?: string
+      hashtags?: string[]
+      authorId?: string
+      authorAccountType?: string
+      communityId?: string
+    }
+  ): Promise<void> {
+    try {
+      await nodeApi.post(`/posts/${postId}/activity`, data)
+    } catch {
+      // Non-blocking background telemetry
+    }
+  },
+
+  /**
+   * Batch track view impressions
+   */
+  async trackBatchActivities(
+    activities: Array<{
+      postId?: string
+      activityType: string
+      postType?: string
+      hashtags?: string[]
+      authorId?: string
+      communityId?: string
+    }>
+  ): Promise<void> {
+    try {
+      await nodeApi.post("/posts/activity/batch", { activities })
+    } catch {
+      // Non-blocking background telemetry
+    }
+  },
+
+  /**
+   * Retrieve user interest profile and top preferences
+   */
+  async getUserInterestProfile(): Promise<{
+    topTags: Array<{ tag: string; score: number }>
+    topPostTypes: Array<{ type: string; score: number }>
+    totalInteractionsCount: number
+    lastActiveAt?: string
+    isAnonymous: boolean
+  }> {
+    const res = await nodeApi.get<ApiResponse<any>>("/posts/user/interest-profile")
+    return res.data.data
+  },
+
   async getPostById(id: string): Promise<Post> {
     const res = await nodeApi.get<ApiResponse<Post>>(`/posts/${id}`)
     return res.data.data
@@ -57,12 +138,29 @@ export const communityService = {
   async createPost(data: {
     content: string
     mediaUrls?: string[]
-    visibility?: string
+    visibility?: "PUBLIC" | "PROTECTED" | "PRIVATE" | string
     communityId?: string
     postType?: string
   }): Promise<Post> {
     const res = await nodeApi.post<ApiResponse<Post>>("/posts", data)
     return res.data.data
+  },
+
+  async updatePost(
+    postId: string,
+    data: {
+      content?: string
+      mediaUrls?: string[]
+      visibility?: "PUBLIC" | "PROTECTED" | "PRIVATE" | string
+      postType?: string
+    }
+  ): Promise<Post> {
+    const res = await nodeApi.put<ApiResponse<Post>>(`/posts/${postId}`, data)
+    return res.data.data
+  },
+
+  async deletePost(postId: string): Promise<void> {
+    await nodeApi.delete(`/posts/${postId}`)
   },
 
   async likePost(postId: string): Promise<void> {
@@ -91,6 +189,10 @@ export const communityService = {
     return res.data.data
   },
 
+  async deleteComment(postId: string, commentId: string): Promise<void> {
+    await nodeApi.delete(`/posts/${postId}/comments/${commentId}`)
+  },
+
   async getCommunities(): Promise<Community[]> {
     const res = await nodeApi.get<ApiResponse<Community[]>>("/communities")
     return res.data.data
@@ -110,6 +212,23 @@ export const communityService = {
   }): Promise<Community> {
     const res = await nodeApi.post<ApiResponse<Community>>("/communities", data)
     return res.data.data
+  },
+
+  async updateCommunity(
+    communityId: string,
+    data: {
+      description?: string
+      category?: string
+      isPrivate?: boolean
+      rules?: string[]
+    }
+  ): Promise<Community> {
+    const res = await nodeApi.put<ApiResponse<Community>>(`/communities/${communityId}`, data)
+    return res.data.data
+  },
+
+  async deleteCommunity(communityId: string): Promise<void> {
+    await nodeApi.delete(`/communities/${communityId}`)
   },
 
   async joinCommunity(communityId: string): Promise<{ isJoined: boolean; memberCount: number }> {
@@ -148,11 +267,29 @@ export const communityService = {
     await nodeApi.post("/notifications/read-all")
   },
 
-  async followUser(userId: string): Promise<void> {
-    await nodeApi.post(`/follows/${userId}`)
+  async getFollowingList(): Promise<string[]> {
+    const res = await nodeApi.get<ApiResponse<{ followingIds: string[] }>>("/follows")
+    return res.data?.data?.followingIds || []
   },
 
-  async unfollowUser(userId: string): Promise<void> {
-    await nodeApi.delete(`/follows/${userId}`)
+  async getFollowStatus(userId: string): Promise<{ isFollowing: boolean; followersCount: number }> {
+    const res = await nodeApi.get<ApiResponse<{ isFollowing: boolean; followersCount: number }>>(
+      `/follows/${userId}/status`
+    )
+    return res.data.data
+  },
+
+  async followUser(userId: string): Promise<{ isFollowing: boolean; followersCount: number }> {
+    const res = await nodeApi.post<ApiResponse<{ isFollowing: boolean; followersCount: number }>>(
+      `/follows/${userId}`
+    )
+    return res.data.data
+  },
+
+  async unfollowUser(userId: string): Promise<{ isFollowing: boolean; followersCount: number }> {
+    const res = await nodeApi.delete<ApiResponse<{ isFollowing: boolean; followersCount: number }>>(
+      `/follows/${userId}`
+    )
+    return res.data.data
   },
 }

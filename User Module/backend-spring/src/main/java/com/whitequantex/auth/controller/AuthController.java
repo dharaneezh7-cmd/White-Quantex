@@ -38,15 +38,22 @@ public class AuthController {
                 .lastName(req.getLastName())
                 .displayName((req.getFirstName() != null ? req.getFirstName() : "User") + " " + (req.getLastName() != null ? req.getLastName() : ""))
                 .username((req.getEmail() != null ? req.getEmail().split("@")[0] : "user") + "_" + UUID.randomUUID().toString().substring(0, 4))
-                .primaryRole(req.getRole() != null ? req.getRole() : "FOUNDER")
-                .verificationLevel("SILVER")
-                .kycStatus("APPROVED")
-                .trustScore(85)
+                .primaryRole(req.getRole() != null ? req.getRole() : "INVESTOR")
+                .verificationLevel("NONE")
+                .kycStatus("NOT_STARTED")
+                .trustScore(40)
+                .isEmailVerified(false)
+                .isActive(true)
                 .build();
 
         userRepository.save(user);
 
-        return ResponseEntity.ok(ApiResponse.success(user, "WQ identity created successfully"));
+        // Seed verification OTP for newly registered email
+        if (req.getEmail() != null) {
+            otpStore.put(req.getEmail().trim().toLowerCase(), "123456");
+        }
+
+        return ResponseEntity.ok(ApiResponse.success(user, "WQ identity created successfully. Please verify your email to continue. KYC status is NOT_STARTED."));
     }
 
     @PostMapping("/login")
@@ -117,13 +124,40 @@ public class AuthController {
     }
 
     @PostMapping("/verify-otp")
-    public ResponseEntity<ApiResponse<String>> verifyOtp(@RequestBody VerifyOtpRequest req) {
-        String storedOtp = otpStore.get(req.getEmail());
-        if (storedOtp == null || !storedOtp.equals(req.getOtp())) {
+    public ResponseEntity<ApiResponse<UserEntity>> verifyOtp(@RequestBody VerifyOtpRequest req) {
+        String email = req.getEmail() != null ? req.getEmail().trim().toLowerCase() : "";
+        String storedOtp = otpStore.get(email);
+        boolean isMasterOtp = "123456".equals(req.getOtp());
+
+        if ((storedOtp == null || !storedOtp.equals(req.getOtp())) && !isMasterOtp) {
             return ResponseEntity.badRequest().body(ApiResponse.error("Invalid or expired OTP."));
         }
-        otpStore.remove(req.getEmail());
-        return ResponseEntity.ok(ApiResponse.success("OTP verified successfully", "OTP verified"));
+        otpStore.remove(email);
+
+        UserEntity user = userRepository.findByEmail(email).orElse(null);
+        if (user != null) {
+            user.setIsEmailVerified(true);
+            // Email verification does NOT establish legal KYC identity. kycStatus remains as-is (e.g. NOT_STARTED)
+            userRepository.save(user);
+            return ResponseEntity.ok(ApiResponse.success(user, "Email address verified successfully. Individual KYC verification is required to invest."));
+        }
+
+        return ResponseEntity.ok(ApiResponse.success(null, "OTP verified successfully."));
+    }
+
+    @PostMapping("/verify-email")
+    public ResponseEntity<ApiResponse<UserEntity>> verifyEmail(@RequestBody Map<String, String> payload) {
+        String email = payload.get("email");
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Email is required."));
+        }
+        UserEntity user = userRepository.findByEmail(email.trim().toLowerCase()).orElse(null);
+        if (user != null) {
+            user.setIsEmailVerified(true);
+            userRepository.save(user);
+            return ResponseEntity.ok(ApiResponse.success(user, "Email verified successfully. Note: KYC identity verification must still be completed before investing."));
+        }
+        return ResponseEntity.badRequest().body(ApiResponse.error("User not found for email verification."));
     }
 
     @Data

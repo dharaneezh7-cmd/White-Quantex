@@ -47,4 +47,26 @@ public interface ExploreService {
     MutualSchemeDto getMutualSchemeByCode(String code);
 
     MutualSchemeDto getMutualSchemeById(UUID id);
+
+    ExploreOverviewDto getVenturesOverview();
+    ExploreOverviewDto getVenturesOverview(UUID userId);
+
+    PagedResponse<CompanySummaryDto> searchVentures(
+            String query,
+            String sector,
+            String tier,
+            BigDecimal minValuation,
+            BigDecimal maxValuation,
+            String letter,
+            String sortBy,
+            String sortDirection,
+            int page,
+            int size
+    );
+
+    CompanySummaryDto getVentureById(UUID id);
+
+    CompanySummaryDto getVentureByTicker(String ticker);
+
+    CorporateOrderDto createOrder(UUID userId, CreateOrderRequest request);
 }

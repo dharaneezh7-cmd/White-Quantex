@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react"
-import { Link, useSearchParams, useNavigate } from "react-router"
+import { Link, useSearchParams, useNavigate, useLocation } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAuthStore } from "../../stores/auth-store"
 import {
@@ -37,8 +37,25 @@ export default function ExplorePage() {
   const activeNavTab =
     (searchParams.get("tab") as "search" | "positions" | "orders" | "my_watchlist" | "all_watchlist" | "index" | "news") || "search"
 
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedTag, setSelectedTag] = useState("All Companies")
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("wq_explore_search") || ""
+    }
+    return ""
+  })
+  const [selectedTag, setSelectedTag] = useState(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("wq_explore_tag") || "All Companies"
+    }
+    return "All Companies"
+  })
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("wq_explore_search", searchQuery)
+      sessionStorage.setItem("wq_explore_tag", selectedTag)
+    }
+  }, [searchQuery, selectedTag])
   const [hoveredTag, setHoveredTag] = useState<string | null>(null)
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -96,16 +113,41 @@ export default function ExplorePage() {
   const [selectedSchemeDetail, setSelectedSchemeDetail] = useState<MutualScheme | null>(null)
 
   // ── Companies Index State (tab === "index") ─────────────────────────────
-  const [indexSearchQuery, setIndexSearchQuery] = useState("")
-  const [indexSelectedLetter, setIndexSelectedLetter] = useState("ALL")
-  const [indexSelectedSector, setIndexSelectedSector] = useState("All")
-  const [indexSortBy, setIndexSortBy] = useState<"name" | "valuation" | "founded" | "employees">("valuation")
+  const [indexSearchQuery, setIndexSearchQuery] = useState(() => {
+    if (typeof window !== "undefined") return sessionStorage.getItem("wq_index_search") || ""
+    return ""
+  })
+  const [indexSelectedLetter, setIndexSelectedLetter] = useState(() => {
+    if (typeof window !== "undefined") return sessionStorage.getItem("wq_index_letter") || "ALL"
+    return "ALL"
+  })
+  const [indexSelectedSector, setIndexSelectedSector] = useState(() => {
+    if (typeof window !== "undefined") return sessionStorage.getItem("wq_index_sector") || "All"
+    return "All"
+  })
+  const [indexSortBy, setIndexSortBy] = useState<"name" | "valuation" | "founded" | "employees">(() => {
+    if (typeof window !== "undefined") return (sessionStorage.getItem("wq_index_sort") as any) || "valuation"
+    return "valuation"
+  })
   const [indexViewMode, setIndexViewMode] = useState<"table" | "grid">("table")
 
   // ── Screener State (Row 4 Left) ──────────────────────────────────────────
-  const [screenerSector, setScreenerSector] = useState("All")
+  const [screenerSector, setScreenerSector] = useState(() => {
+    if (typeof window !== "undefined") return sessionStorage.getItem("wq_screener_sector") || "All"
+    return "All"
+  })
   const [screenerTier, setScreenerTier] = useState("All")
   const [screenerValuation, setScreenerValuation] = useState("All")
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("wq_index_search", indexSearchQuery)
+      sessionStorage.setItem("wq_index_letter", indexSelectedLetter)
+      sessionStorage.setItem("wq_index_sector", indexSelectedSector)
+      sessionStorage.setItem("wq_index_sort", indexSortBy)
+      sessionStorage.setItem("wq_screener_sector", screenerSector)
+    }
+  }, [indexSearchQuery, indexSelectedLetter, indexSelectedSector, indexSortBy, screenerSector])
 
   // ── Orders filter state ──────────────────────────────────────────────────
   const [orderFilter, setOrderFilter] = useState<"ALL" | "FILLED" | "PENDING">("ALL")
@@ -152,22 +194,22 @@ export default function ExplorePage() {
   const allCompanies = allCompaniesData?.content || []
 
   // ── Merged Live Spring Boot Overview Datasets ──
-  const liveMostInvested = backendOverview?.todaysMostInvested || []
-  const liveLeastInvested = backendOverview?.todaysLeastInvested || []
-  const liveTopGainers = backendOverview?.todaysTopGainers || []
-  const liveTopLosers = backendOverview?.todaysTopLosers || []
-  const liveMostActive = backendOverview?.todaysMostActive || []
-  const liveNewHighs = backendOverview?.todays52wHighs || []
+  const liveMostInvested = (backendOverview?.todaysMostInvested || []).slice(0, 5)
+  const liveLeastInvested = (backendOverview?.todaysLeastInvested || []).slice(0, 5)
+  const liveTopGainers = (backendOverview?.todaysTopGainers || []).slice(0, 5)
+  const liveTopLosers = (backendOverview?.todaysTopLosers || []).slice(0, 5)
+  const liveMostActive = (backendOverview?.todaysMostActive || []).slice(0, 5)
+  const liveNewHighs = (backendOverview?.todays52wHighs || []).slice(0, 5)
 
-  const liveRecentlyViewed = (backendOverview?.recentlyViewed || []).map((c) => ({
+  const liveRecentlyViewed = (backendOverview?.recentlyViewed || []).slice(0, 8).map((c) => ({
     id: String(c.id),
     name: c.name,
     shortName: c.shortName,
     ticker: c.ticker,
     sector: c.sector,
     status: "Active Trading",
-    valuation: c.valuation || "$42.5M",
-    change: c.change || "+5.0%",
+    valuation: c.valuation || "N/A",
+    change: c.change || "0.0%",
     isPositive: c.isPositive !== false,
     logoColor: c.logoBg || "bg-indigo-600",
   }))
@@ -689,7 +731,7 @@ export default function ExplorePage() {
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-full flex items-center gap-1">
                   <ShieldCheck className="h-3.5 w-3.5" />
-                  {(backendOverview?.totalRegisteredCompanies || allCompanies.length || 25)} Verified Issuers
+                  {(backendOverview?.totalRegisteredCompanies || allCompanies.length || 0)} Verified Issuers
                 </span>
                 <span className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400 hidden sm:inline">
                   SEC Reg D / CIK Verified
@@ -816,7 +858,10 @@ export default function ExplorePage() {
           <ExploreIndexTab
             allCompanies={allCompanies}
             filteredCompaniesIndex={filteredCompaniesIndex}
-            totalRegisteredCount={backendOverview?.totalRegisteredCompanies || allCompanies.length || 25}
+            totalRegisteredCount={backendOverview?.totalRegisteredCompanies || allCompanies.length || 0}
+            aggregateValuation={backendOverview?.aggregateValuation}
+            legalEntitiesRatio={backendOverview?.legalEntitiesRatio}
+            averageTrustScore={backendOverview?.averageTrustScore}
             indexSearchQuery={indexSearchQuery}
             setIndexSearchQuery={setIndexSearchQuery}
             indexSortBy={indexSortBy}

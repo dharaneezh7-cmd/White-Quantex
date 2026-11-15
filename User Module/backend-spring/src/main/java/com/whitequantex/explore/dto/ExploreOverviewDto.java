@@ -20,4 +20,9 @@ public class ExploreOverviewDto {
     private List<WqRecommendationDto> wqRecommendations;
     private List<MutualSchemeDto> mutualInvestmentSchemes;
     private Long totalRegisteredCompanies;
+    private String aggregateValuation;
+    private java.math.BigDecimal aggregateValuationNum;
+    private String legalEntitiesRatio;
+    private String averageTrustScore;
+    private Double averageTrustScoreNum;
 }

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query"
 import { exploreService } from "@/services/explore/exploreService"
 import { useAuthStore } from "@/stores/auth-store"
 import { Link } from "react-router"
-import { Briefcase, ArrowRight, ShieldCheck } from "lucide-react"
+import { Briefcase, ArrowRight, ShieldCheck, ShieldAlert } from "lucide-react"
 
 export default function DashboardPage() {
   const { user } = useAuthStore()
@@ -49,6 +49,44 @@ export default function DashboardPage() {
             Explore Holdings
           </Link>
         </div>
+
+        {/* KYC Status Action Banner */}
+        {user?.kycStatus !== "APPROVED" && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
+                <ShieldAlert className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-zinc-100">
+                    Individual KYC Verification Required
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-800 dark:text-amber-300">
+                    Status: {user?.kycStatus || "NOT_STARTED"}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-zinc-400 mt-0.5">
+                  Investment authorization remains restricted. Complete identity verification to unlock primary corporate and venture funding access.
+                </p>
+              </div>
+            </div>
+
+            <Link
+              to="/verification"
+              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-xs transition-colors self-start sm:self-auto shrink-0 flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>
+                {user?.kycStatus === "UNDER_REVIEW"
+                  ? "View KYC Tracker"
+                  : user?.kycStatus === "ACTION_REQUIRED"
+                  ? "Resolve Action Required"
+                  : "Start KYC Verification"}
+              </span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        )}
 
         {/* Financial Overview Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

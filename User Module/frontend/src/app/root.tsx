@@ -38,7 +38,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body suppressHydrationWarning>
         <Providers>{children}</Providers>
-        <ScrollRestoration />
+        <ScrollRestoration
+          getKey={(location) => {
+            if (location.pathname.startsWith("/messages")) {
+              return "/messages"
+            }
+            return location.key
+          }}
+        />
         <Scripts />
       </body>
     </html>

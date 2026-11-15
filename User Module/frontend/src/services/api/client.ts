@@ -30,18 +30,34 @@ const attachUserContext = (config: any) => {
         if (userId) {
           config.headers = config.headers || {}
           config.headers["X-WQ-User-Id"] = userId
-        }
-        if (user?.email) {
-          config.headers = config.headers || {}
-          config.headers["X-WQ-User-Email"] = user.email
-        }
-        if (user?.displayName) {
-          config.headers = config.headers || {}
-          config.headers["X-WQ-User-Name"] = user.displayName
-        }
-        if (user?.username) {
-          config.headers = config.headers || {}
-          config.headers["X-WQ-User-Username"] = user.username
+
+          if (user?.email) {
+            config.headers["X-WQ-User-Email"] = user.email
+          }
+          const name =
+            user?.displayName ||
+            [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
+            user?.username ||
+            "Verified Member"
+          config.headers["X-WQ-User-Name"] = name
+
+          if (user?.username) {
+            config.headers["X-WQ-User-Username"] = user.username
+          }
+          if (user?.avatarUrl) {
+            config.headers["X-WQ-User-Avatar"] = user.avatarUrl
+          }
+          if (user?.headline) {
+            config.headers["X-WQ-User-Headline"] = user.headline
+          }
+          const role = user?.primaryRole || user?.role || "FOUNDER"
+          config.headers["X-WQ-User-Role"] = role
+
+          const accountType = user?.accountType || "INDIVIDUAL"
+          config.headers["X-WQ-User-Account-Type"] = accountType
+
+          const verification = user?.verificationLevel || "NONE"
+          config.headers["X-WQ-User-Verification"] = verification
         }
       }
     } catch {}

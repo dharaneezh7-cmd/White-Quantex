@@ -58,8 +58,13 @@ export const VerificationBadge = React.memo(function VerificationBadge({
   className,
   showLabel = false,
 }: VerificationBadgeProps) {
-  const normalizedLevel = (level || "bronze").toString().toLowerCase()
-  const config = levelConfig[normalizedLevel] || defaultConfig
+  if (!level) return null
+  const normalizedLevel = level.toString().toLowerCase().trim()
+  if (normalizedLevel === "none" || normalizedLevel === "unverified" || normalizedLevel === "false") {
+    return null
+  }
+  const config = levelConfig[normalizedLevel]
+  if (!config) return null
 
   if (!showLabel) {
     return (

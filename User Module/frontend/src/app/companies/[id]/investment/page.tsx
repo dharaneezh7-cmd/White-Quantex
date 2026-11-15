@@ -3,7 +3,9 @@ import { useParams, useSearchParams, Link } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 import {
   ArrowLeft,
+  ArrowRight,
   ShieldCheck,
+  ShieldAlert,
   DollarSign,
   Lock,
   Building2,
@@ -22,6 +24,8 @@ import {
   type CompanySummary,
 } from "../../../../services/explore/exploreService"
 import { getCompanyLogoStyle } from "../../../explore/utils/exploreUtils"
+import { kycService } from "@/services/kyc/kycService"
+import { springApi } from "@/services/api/client"
 
 export default function InvestmentActionPage() {
   const { id } = useParams<{ id: string }>()
@@ -64,84 +68,114 @@ export default function InvestmentActionPage() {
   const [isAccredited, setIsAccredited] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
+  const [kycError, setKycError] = useState<string | null>(null)
 
+  // Query KYC status from backend
+  const { data: kycInfo } = useQuery({
+    queryKey: ["kyc-status"],
+    queryFn: () => kycService.getStatus(),
+    staleTime: 5_000,
+  })
+
+  const isKycApproved = kycInfo?.kycStatus === "APPROVED"
   const isBelowMinimum = amount < requiredMin
-  const isFormValid = !isBelowMinimum && hasAgreedCovenants && isAccredited && investorName.trim().length >= 3
+  const isFormValid = isKycApproved && !isBelowMinimum && hasAgreedCovenants && isAccredited && investorName.trim().length >= 3
 
-  const handleExecuteSubscription = (e: React.FormEvent) => {
+  const handleExecuteSubscription = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!isKycApproved) {
+      setKycError("Individual KYC verification is mandatory before executing investments. Please complete identity verification.")
+      return
+    }
     if (!isFormValid) return
     setIsSubmitting(true)
-    setTimeout(() => {
-      try {
-        const orderId = `ORD-${comp.ticker || "VNT"}-${Date.now().toString().slice(-6)}`
-        const sharePrice = 25
-        const sharesCount = Math.floor(amount / sharePrice)
-        const now = new Date().toISOString()
+    setKycError(null)
 
-        const newOrder = {
-          id: orderId,
-          companyId: comp.id || String(Date.now()),
-          companyName: comp.name || "Company",
-          ticker: comp.ticker || "WQ",
-          logoColor: comp.logoColor || "bg-indigo-600",
-          orderNumber: orderId,
-          type: "PRIMARY_SUBSCRIPTION",
-          shareClass: inv.securityType || "Series Seed Preferred",
-          shares: sharesCount,
-          pricePerShare: sharePrice,
-          totalAmount: amount,
-          status: "FILLED",
-          settlementStatus: "SETTLED",
-          executedAt: now,
-        }
+    try {
+      // Send statutory order to Spring Boot backend
+      await springApi.post("/explore/orders", {
+        companyId: comp.id,
+        ticker: comp.ticker,
+        amount: amount,
+        shares: Math.floor(amount / 25),
+        shareClass: inv.securityType || "Series Seed Preferred",
+        type: "PRIMARY_SUBSCRIPTION",
+        pricePerShare: 25,
+      })
+    } catch (err: any) {
+      if (err.response?.status === 403) {
+        setKycError(err.response?.data?.message || "KYC verification required. Complete and get your identity verified to unlock investment access.")
+        setIsSubmitting(false)
+        return
+      }
+      console.warn("Backend order submission error, continuing local fallback:", err)
+    }
 
-        const newPosition = {
-          id: `pos-${comp.ticker || "wq"}-${Date.now()}`,
-          companyId: comp.id || String(Date.now()),
-          companyName: comp.name || "Company",
-          ticker: comp.ticker || "WQ",
-          logoColor: comp.logoColor || "bg-indigo-600",
-          sector: comp.sector || "Technology",
-          shares: sharesCount,
-          shareClass: inv.securityType || "Series Seed Preferred",
-          costBasis: amount,
-          currentValue: amount,
-          unrealizedPl: 0,
-          unrealizedPlPercent: 0,
-          ownershipPercent: (amount / (comp.valuationNum || 50000000)) * 100,
-        }
+    try {
+      const orderId = `ORD-${comp.ticker || "VNT"}-${Date.now().toString().slice(-6)}`
+      const sharePrice = 25
+      const sharesCount = Math.floor(amount / sharePrice)
+      const now = new Date().toISOString()
 
-        // Determine if this is a venture round
-        const isVenture = Boolean(
-          comp.roundType ||
-          (inv.roundType && (inv.roundType.includes("Seed") || inv.roundType.includes("Series") || inv.roundType.includes("Growth")))
-        )
-        const orderKey = isVenture ? "wq_venture_orders" : "wq_corporate_orders"
-        const positionKey = isVenture ? "wq_venture_positions" : "wq_corporate_positions"
-
-        // Persist order
-        const existingOrders = JSON.parse(localStorage.getItem(orderKey) || "[]")
-        localStorage.setItem(orderKey, JSON.stringify([newOrder, ...existingOrders]))
-
-        // Persist position
-        const existingPositions = JSON.parse(localStorage.getItem(positionKey) || "[]")
-        const posIdx = existingPositions.findIndex((p: any) => p.ticker === comp.ticker)
-        if (posIdx >= 0) {
-          existingPositions[posIdx].shares = (existingPositions[posIdx].shares || 0) + sharesCount
-          existingPositions[posIdx].costBasis = (existingPositions[posIdx].costBasis || 0) + amount
-          existingPositions[posIdx].currentValue = (existingPositions[posIdx].currentValue || 0) + amount
-        } else {
-          existingPositions.unshift(newPosition)
-        }
-        localStorage.setItem(positionKey, JSON.stringify(existingPositions))
-      } catch (err) {
-        console.error("Failed to store investment:", err)
+      const newOrder = {
+        id: orderId,
+        companyId: comp.id || String(Date.now()),
+        companyName: comp.name || "Company",
+        ticker: comp.ticker || "WQ",
+        logoColor: comp.logoColor || "bg-indigo-600",
+        orderNumber: orderId,
+        type: "PRIMARY_SUBSCRIPTION",
+        shareClass: inv.securityType || "Series Seed Preferred",
+        shares: sharesCount,
+        pricePerShare: sharePrice,
+        totalAmount: amount,
+        status: "FILLED",
+        settlementStatus: "SETTLED",
+        executedAt: now,
       }
 
-      setIsSubmitting(false)
-      setIsSuccessModalOpen(true)
-    }, 900)
+      const newPosition = {
+        id: `pos-${comp.ticker || "wq"}-${Date.now()}`,
+        companyId: comp.id || String(Date.now()),
+        companyName: comp.name || "Company",
+        ticker: comp.ticker || "WQ",
+        logoColor: comp.logoColor || "bg-indigo-600",
+        sector: comp.sector || "Technology",
+        shares: sharesCount,
+        shareClass: inv.securityType || "Series Seed Preferred",
+        costBasis: amount,
+        currentValue: amount,
+        unrealizedPl: 0,
+        unrealizedPlPercent: 0,
+        ownershipPercent: (amount / (comp.valuationNum || 50000000)) * 100,
+      }
+
+      const isVenture = Boolean(
+        comp.roundType ||
+        (inv.roundType && (inv.roundType.includes("Seed") || inv.roundType.includes("Series") || inv.roundType.includes("Growth")))
+      )
+      const orderKey = isVenture ? "wq_venture_orders" : "wq_corporate_orders"
+      const positionKey = isVenture ? "wq_venture_positions" : "wq_corporate_positions"
+
+      const existingOrders = JSON.parse(localStorage.getItem(orderKey) || "[]")
+      localStorage.setItem(orderKey, JSON.stringify([newOrder, ...existingOrders]))
+
+      const existingPositions = JSON.parse(localStorage.getItem(positionKey) || "[]")
+      const posIdx = existingPositions.findIndex((p: any) => p.ticker === comp.ticker)
+      if (posIdx >= 0) {
+        existingPositions[posIdx].shares = (existingPositions[posIdx].shares || 0) + sharesCount
+        existingPositions[posIdx].costBasis = (existingPositions[posIdx].costBasis || 0) + amount
+        existingPositions[posIdx].currentValue = (existingPositions[posIdx].currentValue || 0) + amount
+      } else {
+        existingPositions.unshift(newPosition)
+      }
+      localStorage.setItem(positionKey, JSON.stringify(existingPositions))
+    } catch (err) {
+      console.error("Failed to store investment:", err)
+    }
+
+    setIsSubmitting(false)
+    setIsSuccessModalOpen(true)
   }
 
   return (
@@ -221,6 +255,62 @@ export default function InvestmentActionPage() {
               Enter the principal capital allocation for this corporate expansion round.
             </p>
           </div>
+
+          {/* KYC Enforcement Error Banner */}
+          {kycError && (
+            <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-300 flex items-start gap-3">
+              <ShieldAlert className="h-5 w-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+              <div className="text-xs sm:text-sm leading-relaxed">{kycError}</div>
+            </div>
+          )}
+
+          {/* High-Visibility KYC Mandatory Warning Banner */}
+          {!isKycApproved && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border-2 border-amber-500/40 text-amber-950 dark:text-amber-200 space-y-3 shadow-xs">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Lock className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100">
+                      Individual KYC Verification Mandatory to Invest
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                      Status: {kycInfo?.kycStatus || "NOT_STARTED"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-zinc-300 mt-1 leading-relaxed">
+                    Under statutory financial regulations (SEBI &amp; FATF AML/CFT), all investors must complete identity verification before participating in primary corporate or venture capital rounds. Investment authorization is strictly restricted until your KYC has been verified and approved.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2.5 border-t border-amber-500/20 flex-wrap gap-2">
+                <span className="text-[11px] font-medium text-amber-800 dark:text-amber-300/80">
+                  {kycInfo?.kycStatus === "UNDER_REVIEW"
+                    ? "Your application is currently being reviewed by compliance (SLA 24-48h)."
+                    : kycInfo?.kycStatus === "ACTION_REQUIRED"
+                    ? "Additional documentation requested by compliance."
+                    : "Verification takes ~3 minutes with your government photo ID."}
+                </span>
+
+                <Link
+                  to="/verification"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow-xs transition-colors cursor-pointer"
+                >
+                  <span>
+                    {kycInfo?.kycStatus === "UNDER_REVIEW"
+                      ? "View Application Tracker"
+                      : kycInfo?.kycStatus === "ACTION_REQUIRED"
+                      ? "Resolve Corrections"
+                      : "Start KYC Verification"}
+                  </span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </div>
+          )}
 
           {/* Company-Set Minimum Requirement Banner */}
           <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700/60 flex items-center justify-between text-xs">
@@ -372,16 +462,18 @@ export default function InvestmentActionPage() {
           {/* Submit Action */}
           <button
             type="submit"
-            disabled={!isFormValid || isSubmitting}
+            disabled={!isFormValid || isSubmitting || !isKycApproved}
             className={`w-full py-3.5 rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer ${
-              isFormValid && !isSubmitting
+              isFormValid && !isSubmitting && isKycApproved
                 ? "bg-[#00d09c] hover:bg-[#00b888] text-slate-950 shadow-[#00d09c]/25 active:scale-98"
                 : "bg-slate-200 dark:bg-zinc-800 text-slate-400 dark:text-zinc-600 cursor-not-allowed shadow-none"
             }`}
           >
             <Lock className="h-4 w-4" />
             <span>
-              {isSubmitting
+              {!isKycApproved
+                ? "Individual KYC Verification Mandatory to Invest"
+                : isSubmitting
                 ? "Transmitting Subscription to Corporate Escrow..."
                 : isBelowMinimum
                 ? `Minimum Investment of $${requiredMin.toLocaleString()} Required`

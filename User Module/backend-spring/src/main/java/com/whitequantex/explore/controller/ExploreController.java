@@ -18,6 +18,7 @@ import java.util.UUID;
 public class ExploreController {
 
     private final ExploreService exploreService;
+    private final com.whitequantex.users.repository.UserRepository userRepository;
 
     private UUID resolveUserId(String header) {
         if (header == null || header.isBlank()) {
@@ -95,6 +96,32 @@ public class ExploreController {
         return ResponseEntity.ok(ApiResponse.success(orders, "Corporate orders retrieved"));
     }
 
+    @PostMapping({"/orders", "/investments"})
+    public ResponseEntity<ApiResponse<?>> createOrder(
+            @RequestBody CreateOrderRequest request,
+            @RequestHeader(value = "X-WQ-User-Id", required = false) String userIdHeader
+    ) {
+        UUID userId = resolveUserId(userIdHeader);
+        if (userId == null) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Authentication required to place investments"));
+        }
+
+        com.whitequantex.users.entity.UserEntity user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Authenticated user account not found"));
+        }
+
+        if (!"APPROVED".equalsIgnoreCase(user.getKycStatus())) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error("KYC verification required. Complete and get your identity verified to unlock investment access."));
+        }
+
+        CorporateOrderDto order = exploreService.createOrder(userId, request);
+        return ResponseEntity.ok(ApiResponse.success(order, "Investment order placed successfully"));
+    }
+
     @PostMapping("/recently-viewed/{identifier}")
     public ResponseEntity<ApiResponse<Void>> recordRecentlyViewed(
             @PathVariable String identifier,
@@ -150,5 +177,76 @@ public class ExploreController {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(ApiResponse.success(scheme, "Mutual investment scheme factsheet retrieved"));
+    }
+
+    // ── Dedicated Independent Ventures & Start-ups Endpoints ─────────────────
+
+    @GetMapping("/ventures/overview")
+    public ResponseEntity<ApiResponse<ExploreOverviewDto>> getVenturesOverview(
+            @RequestHeader(value = "X-WQ-User-Id", required = false) String userIdHeader
+    ) {
+        UUID userId = resolveUserId(userIdHeader);
+        ExploreOverviewDto overview = exploreService.getVenturesOverview(userId);
+        return ResponseEntity.ok(ApiResponse.success(overview, "Ventures market overview retrieved"));
+    }
+
+    @GetMapping("/ventures")
+    public ResponseEntity<ApiResponse<PagedResponse<CompanySummaryDto>>> getVentures(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false, defaultValue = "All") String sector,
+            @RequestParam(required = false, defaultValue = "All") String tier,
+            @RequestParam(required = false) BigDecimal minValuation,
+            @RequestParam(required = false) BigDecimal maxValuation,
+            @RequestParam(required = false, defaultValue = "ALL") String letter,
+            @RequestParam(required = false, defaultValue = "name") String sortBy,
+            @RequestParam(required = false, defaultValue = "asc") String sortDirection,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size
+    ) {
+        PagedResponse<CompanySummaryDto> result = exploreService.searchVentures(
+                query, sector, tier, minValuation, maxValuation, letter, sortBy, sortDirection, page, size
+        );
+        return ResponseEntity.ok(ApiResponse.success(result, "Venture capital issuers retrieved"));
+    }
+
+    @GetMapping("/ventures/{identifier}")
+    public ResponseEntity<ApiResponse<CompanySummaryDto>> getVentureById(@PathVariable String identifier) {
+        CompanySummaryDto venture = null;
+        try {
+            UUID id = UUID.fromString(identifier);
+            venture = exploreService.getVentureById(id);
+        } catch (IllegalArgumentException e) {
+            venture = exploreService.getVentureByTicker(identifier);
+        }
+        if (venture == null) {
+            venture = exploreService.getVentureByTicker(identifier);
+        }
+        if (venture == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(ApiResponse.success(venture, "Venture issuer factsheet retrieved"));
+    }
+
+    @GetMapping("/ventures/positions")
+    public ResponseEntity<ApiResponse<List<CorporatePositionDto>>> getVenturePositions(
+            @RequestHeader(value = "X-WQ-User-Id", required = false) String userIdHeader
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(List.of(), "Venture positions retrieved"));
+    }
+
+    @GetMapping("/ventures/orders")
+    public ResponseEntity<ApiResponse<List<CorporateOrderDto>>> getVentureOrders(
+            @RequestParam(required = false, defaultValue = "ALL") String status,
+            @RequestHeader(value = "X-WQ-User-Id", required = false) String userIdHeader
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(List.of(), "Venture orders retrieved"));
+    }
+
+    @GetMapping("/ventures/news")
+    public ResponseEntity<ApiResponse<List<CorporateNewsDto>>> getVentureNews(
+            @RequestParam(required = false, defaultValue = "ALL") String ticker,
+            @RequestParam(required = false, defaultValue = "ALL") String category
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(List.of(), "Venture news retrieved"));
     }
 }

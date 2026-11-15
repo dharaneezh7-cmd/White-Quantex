@@ -57,8 +57,9 @@ export function PageProgressBar() {
     }, 280)
   }
 
-  // Trigger on route changes
+  // Trigger on route changes (skip intra-messages conversation changes to prevent flashing)
   useEffect(() => {
+    if (location.pathname.startsWith("/messages")) return
     startProgress()
     const timer = setTimeout(() => {
       completeProgress()
@@ -111,10 +112,17 @@ export function PageProgressBar() {
 export function PageTransitionWrapper({ children }: { children: React.ReactNode }) {
   const location = useLocation()
 
+  // Group related sub-routes under the same key to prevent component remounting on sub-navigation
+  const pageKey = location.pathname.startsWith("/messages")
+    ? "/messages"
+    : location.pathname.startsWith("/community")
+    ? "/community"
+    : location.pathname
+
   return (
     <AnimatePresence mode="wait">
       <motion.div
-        key={location.pathname}
+        key={pageKey}
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -4 }}

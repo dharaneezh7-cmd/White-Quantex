@@ -26,4 +26,9 @@ public class CategoryCompanyDto {
     private Integer percentFunded;
     private String volume;
     private String cik;
+    private String minInvestment;
+    private java.math.BigDecimal minInvestmentNum;
+    private String fundingPurpose;
+    private String targetRaise;
+    private String roundType;
 }

@@ -1,5 +1,5 @@
 import React, { useState } from "react"
-import { MapPin, Users, Check, ArrowUpRight } from "lucide-react"
+import { MapPin, Users, Check } from "lucide-react"
 import { useNavigate } from "react-router"
 import { motion } from "framer-motion"
 import { formatNumber, getInitials, cn } from "../../lib/utils"
@@ -10,23 +10,42 @@ import { VerificationBadge } from "./VerificationBadge"
 interface FounderCardProps {
   founder?: any
   index?: number
+  isFollowing?: boolean
+  onToggleFollow?: (id: string) => void
+  onCardClick?: (founder: any) => void
 }
 
-export const FounderCard = React.memo(function FounderCard({ founder, index = 0 }: FounderCardProps) {
+export const FounderCard = React.memo(function FounderCard({
+  founder,
+  index = 0,
+  isFollowing: propIsFollowing,
+  onToggleFollow,
+  onCardClick,
+}: FounderCardProps) {
   const navigate = useNavigate()
-  const founderId = founder?.id ? String(founder.id) : "u-1"
+  const founderId = founder?.id ? String(founder.id) : (founder?.wqUserId ? String(founder.wqUserId) : "u-1")
   const name = founder?.name || `${founder?.firstName || "Founder"} ${founder?.lastName || ""}`.trim()
-  const followersCount = founder?.followersCount ?? 4200
-  const [isFollowing, setIsFollowing] = useState(Boolean(founder?.isFollowing))
+  const [localIsFollowing, setLocalIsFollowing] = useState(Boolean(founder?.isFollowing))
+  const isFollowing = typeof propIsFollowing === "boolean" ? propIsFollowing : localIsFollowing
+  const baseFollowers = founder?.followersCount ?? 4200
+  const followersCount = baseFollowers
 
   const handleFollowToggle = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setIsFollowing((prev) => !prev)
+    if (onToggleFollow) {
+      onToggleFollow(founderId)
+    } else {
+      setLocalIsFollowing((prev) => !prev)
+    }
   }
 
   const handleCardClick = () => {
-    navigate(`/founders/${founderId}`)
+    if (onCardClick) {
+      onCardClick(founder)
+    } else {
+      navigate(`/profile/${encodeURIComponent(founder?.username || founderId)}`)
+    }
   }
 
   return (
@@ -43,7 +62,7 @@ export const FounderCard = React.memo(function FounderCard({ founder, index = 0 
         <div>
           <div className="flex items-start gap-3">
             <Avatar className="h-12 w-12 ring-2 ring-slate-100 dark:ring-zinc-800 shrink-0 rounded-[10px]">
-              <AvatarImage src={founder?.avatarUrl} alt={name} className="rounded-[10px] object-cover" />
+              <AvatarImage src={founder?.avatarUrl || founder?.avatar} alt={name} className="rounded-[10px] object-cover" />
               <AvatarFallback className="bg-emerald-50 dark:bg-emerald-950/40 text-sm font-semibold text-emerald-700 dark:text-emerald-400 font-bold rounded-[10px]">
                 {getInitials(name)}
               </AvatarFallback>
@@ -55,7 +74,7 @@ export const FounderCard = React.memo(function FounderCard({ founder, index = 0 
                 </h3>
                 {founder?.verificationLevel && <VerificationBadge level={founder.verificationLevel} />}
               </div>
-              <p className="mt-0.5 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">{founder?.headline || founder?.bio || "Founder"}</p>
+              <p className="mt-0.5 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">{founder?.headline || founder?.bio || ""}</p>
             </div>
           </div>
 

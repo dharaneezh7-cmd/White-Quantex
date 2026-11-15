@@ -45,6 +45,8 @@ import {
 } from "lucide-react"
 import { exploreService, getCompanyInvestmentDetails, type CompanySummary } from "../../../services/explore/exploreService"
 import { communityService } from "../../../services/community/communityService"
+import { useMarketPrices } from "../../../services/market/useMarketPrices"
+import { PriceChart } from "../../../components/market/PriceChart"
 
 // Helper for logo styling
 function getCompanyLogoStyle(logoColor?: string, ticker?: string) {
@@ -187,70 +189,30 @@ export default function CompanyDetailPage() {
     staleTime: 60_000,
   })
 
+  // Real-time market prices streamed from Spring Boot Financial Engine
+  const {
+    quotes: backendQuotes,
+    isConnected: sseConnected,
+    lastTick,
+  } = useMarketPrices()
+
+  const tickerKey = (company?.ticker || companyIdentifier).toUpperCase()
+  const liveQuote = backendQuotes[tickerKey]
+
   // Estimated share price and valuation metrics
-  const valuationNum = company?.valuationNum || 84600000
-  const annualRevNum = company?.annualRevenueNum || 28800000
-  const isPositiveChange = company?.isPositive ?? true
-  const changePercent = company?.changePercent ?? 8.4
-
-  // Implied share price calculation (based on 2.5M shares baseline)
   const totalShares = 2_500_000
-  const baseSharePrice = valuationNum / totalShares
+  const fallbackValuation = company?.valuationNum || 84600000
+  const baseSharePrice = liveQuote ? Number(liveQuote.price) : fallbackValuation / totalShares
+  const valuationNum = liveQuote ? baseSharePrice * totalShares : fallbackValuation
+  const annualRevNum = company?.annualRevenueNum || 28800000
+  const isPositiveChange = liveQuote ? liveQuote.isPositive : (company?.isPositive ?? true)
+  const changePercent = liveQuote ? Number(liveQuote.changePercent) : (company?.changePercent ?? 8.4)
 
-  // Generate deterministic interactive chart data points based on timeframe & company stats & selectedMetricView
-  const chartPoints = useMemo(() => {
-    const count = timeframe === "1D" ? 30 : timeframe === "1W" ? 40 : 50
-    const points: { label: string; price: number; volume: number; date: string }[] = []
-
-    let baseValue = valuationNum
-    let trendMultiplier = isPositiveChange ? 1 : -1
-    let totalTrend = (changePercent / 100) * trendMultiplier
-
-    if (selectedMetricView === "investor_interest") {
-      baseValue = 92.5
-      totalTrend = 0.185
-    } else if (selectedMetricView === "field_growth") {
-      baseValue = 1248.5
-      totalTrend = 0.264
-    }
-
-    const now = new Date()
-    const stepHours = timeframe === "1D" ? 0.25 : timeframe === "1W" ? 4 : timeframe === "1M" ? 14 : 72
-
-    let runningPrice = baseValue * (1 - totalTrend * 0.8)
-
-    for (let i = 0; i < count; i++) {
-      const progress = i / (count - 1)
-      const randomNoise = (Math.sin(i * 1.3) * 0.4 + Math.cos(i * 2.1) * 0.3) * (baseValue * 0.02)
-      const trend = (baseValue * totalTrend) * progress
-      const p = Math.max(1, runningPrice + trend + randomNoise)
-
-      const pointDate = new Date(now.getTime() - (count - 1 - i) * stepHours * 3600000)
-      const dateStr = timeframe === "1D" 
-        ? pointDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-        : pointDate.toLocaleDateString([], { month: "short", day: "numeric" })
-
-      points.push({
-        label: dateStr,
-        price: parseFloat(p.toFixed(2)),
-        volume: Math.floor(1000 + Math.abs(Math.sin(i)) * 8500),
-        date: pointDate.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
-      })
-    }
-    return points
-  }, [timeframe, valuationNum, isPositiveChange, changePercent, selectedMetricView])
-
-  // Active price display (switches to hovered point when scrubbing chart)
-  const defaultBaseValue = selectedMetricView === "investor_interest" ? 92.5 : selectedMetricView === "field_growth" ? 1248.5 : valuationNum
-  const activePricePoint = hoveredPointIndex !== null && chartPoints[hoveredPointIndex] 
-    ? chartPoints[hoveredPointIndex] 
-    : chartPoints[chartPoints.length - 1]
-
-  const firstPrice = chartPoints[0]?.price || defaultBaseValue
-  const currentPrice = activePricePoint?.price || defaultBaseValue
-  const periodDelta = currentPrice - firstPrice
-  const periodPercent = ((periodDelta / firstPrice) * 100).toFixed(2)
-  const isPeriodPositive = periodDelta >= 0
+  // Active price display
+  const currentPrice = valuationNum
+  const periodPercent = changePercent.toFixed(2)
+  const periodDelta = valuationNum * (changePercent / 100)
+  const isPeriodPositive = isPositiveChange
 
   // Calculate 52-Week Range in Enterprise Market Cap Valuation
   const low52WVal = valuationNum * 0.72
@@ -512,32 +474,6 @@ export default function CompanyDetailPage() {
     return companyPosts
   }, [companyPosts, postFilter])
 
-  // SVG Chart Dimensions & Math
-  const minPrice = Math.min(...chartPoints.map((p) => p.price)) * 0.98
-  const maxPrice = Math.max(...chartPoints.map((p) => p.price)) * 1.02
-  const svgWidth = 800
-  const svgHeight = 260
-  const paddingX = 20
-  const paddingY = 30
-
-  const getCoordinates = (index: number, price: number) => {
-    const x = paddingX + (index / (chartPoints.length - 1)) * (svgWidth - paddingX * 2)
-    const y = svgHeight - paddingY - ((price - minPrice) / (maxPrice - minPrice)) * (svgHeight - paddingY * 2)
-    return { x, y }
-  }
-
-  const pathD = chartPoints.reduce((acc, point, index) => {
-    const { x, y } = getCoordinates(index, point.price)
-    return index === 0 ? `M ${x} ${y}` : `${acc} L ${x} ${y}`
-  }, "")
-
-  const fillD = pathD
-    ? `${pathD} L ${svgWidth - paddingX} ${svgHeight} L ${paddingX} ${svgHeight} Z`
-    : ""
-
-  const chartThemeColor = isPeriodPositive ? "#00d09c" : "#f43f5e"
-  const chartGradientId = isPeriodPositive ? "priceGradGreen" : "priceGradRed"
-
   const handleLikePost = (postId: string) => {
     const isCurrentlyLiked = likedPosts[postId]
     setLikedPosts((prev) => ({ ...prev, [postId]: !isCurrentlyLiked }))
@@ -641,6 +577,17 @@ export default function CompanyDetailPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Live SSE status indicator */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-zinc-800 text-[11px] font-mono">
+              <span className={`h-2 w-2 rounded-full ${sseConnected ? "bg-[#00d09c] animate-ping" : "bg-amber-400"}`} />
+              <span className="text-slate-600 dark:text-zinc-400 font-medium">
+                ${baseSharePrice.toFixed(2)}
+              </span>
+              <span className={`font-bold ${isPositiveChange ? "text-emerald-500" : "text-rose-500"}`}>
+                {isPositiveChange ? "+" : ""}{changePercent.toFixed(2)}%
+              </span>
+            </div>
+
             <button
               onClick={() => setIsWatchlisted(!isWatchlisted)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 border cursor-pointer ${
@@ -695,6 +642,12 @@ export default function CompanyDetailPage() {
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#00d09c]/10 text-[#00a87e] dark:text-[#00d09c] border border-[#00d09c]/20">
                     {comp.sector}
                   </span>
+                  <div className="px-2.5 py-0.5 rounded-md text-xs font-mono font-bold flex items-center gap-1 bg-slate-100 dark:bg-zinc-800 text-slate-900 dark:text-white">
+                    <span>${baseSharePrice.toFixed(2)}</span>
+                    <span className={`text-[10px] ${isPositiveChange ? "text-emerald-500" : "text-rose-500"}`}>
+                      ({isPositiveChange ? "+" : ""}{changePercent.toFixed(2)}%)
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-zinc-400">
@@ -750,10 +703,14 @@ export default function CompanyDetailPage() {
               {comp.verificationLevel} VERIFIED
             </span>
           </div>
+        </div>
 
-          {/* Three Vertically Aligned Performance & Trajectory Options (Marked Area) */}
-          <div className="pt-3 border-t border-slate-100 dark:border-zinc-800/60">
-            <div className="flex items-center justify-between mb-2 px-1">
+        {/* 2. Interactive Price Chart & Live Market Metrics Section */}
+        <div className="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800/80 shadow-xs space-y-5">
+          
+          {/* Trajectory & Analytics Views (Horizontal Selection Grid) */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between px-1">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 flex items-center gap-1.5">
                 <Activity className="h-3.5 w-3.5 text-indigo-500" />
                 Trajectory & Analytics Views
@@ -763,292 +720,169 @@ export default function CompanyDetailPage() {
               </span>
             </div>
 
-            <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* Option 1: Investor Interest */}
               <button
                 type="button"
                 onClick={() => setSelectedMetricView("investor_interest")}
-                className={`w-full p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between group ${
+                className={`w-full p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 group ${
                   selectedMetricView === "investor_interest"
                     ? "bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500/50 shadow-xs ring-1 ring-emerald-500/25"
                     : "bg-slate-50/70 dark:bg-zinc-800/40 border-slate-200/70 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-800/60"
                 }`}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={`w-8.5 h-8.5 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                    selectedMetricView === "investor_interest"
-                      ? "bg-emerald-500 text-white shadow-xs"
-                      : "bg-slate-200/80 dark:bg-zinc-700/60 text-slate-600 dark:text-zinc-300 group-hover:text-emerald-500"
-                  }`}>
-                    <Users className="h-4.5 w-4.5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                        Investor Interest
-                      </span>
-                      {selectedMetricView === "investor_interest" ? (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500 text-white uppercase tracking-wider">
-                          Active View
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
-                          Syndicate Demand
-                        </span>
-                      )}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`w-8.5 h-8.5 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                      selectedMetricView === "investor_interest"
+                        ? "bg-emerald-500 text-white shadow-xs"
+                        : "bg-slate-200/80 dark:bg-zinc-700/60 text-slate-600 dark:text-zinc-300 group-hover:text-emerald-500"
+                    }`}>
+                      <Users className="h-4.5 w-4.5" />
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-zinc-400 truncate mt-0.5">
-                      Syndicate backing, institutional demand index & secondary order volume
-                    </p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                          Investor Interest
+                        </span>
+                        {selectedMetricView === "investor_interest" ? (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500 text-white uppercase tracking-wider shrink-0">
+                            Active View
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-medium shrink-0">
+                            Syndicate Demand
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-xs sm:text-sm font-bold font-mono text-emerald-600 dark:text-emerald-400 block leading-tight">
+                      92.5 / 100
+                    </span>
+                    <span className="text-[10px] text-slate-400 dark:text-zinc-500 block">
+                      +18.5% Inflow Surge
+                    </span>
                   </div>
                 </div>
-                <div className="text-right shrink-0 ml-3">
-                  <span className="text-xs font-bold font-mono text-emerald-600 dark:text-emerald-400 block">
-                    92.5 / 100
-                  </span>
-                  <span className="text-[10px] text-slate-400 dark:text-zinc-500">
-                    +18.5% Inflow Surge
-                  </span>
-                </div>
+                <p className="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2 leading-relaxed">
+                  Syndicate backing, institutional demand index & secondary order volume
+                </p>
               </button>
 
               {/* Option 2: Market Cap Growth */}
               <button
                 type="button"
                 onClick={() => setSelectedMetricView("company_growth")}
-                className={`w-full p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between group ${
+                className={`w-full p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 group ${
                   selectedMetricView === "company_growth"
                     ? "bg-cyan-500/10 dark:bg-cyan-500/15 border-cyan-500/50 shadow-xs ring-1 ring-cyan-500/25"
                     : "bg-slate-50/70 dark:bg-zinc-800/40 border-slate-200/70 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-800/60"
                 }`}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={`w-8.5 h-8.5 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                    selectedMetricView === "company_growth"
-                      ? "bg-cyan-600 text-white shadow-xs"
-                      : "bg-slate-200/80 dark:bg-zinc-700/60 text-slate-600 dark:text-zinc-300 group-hover:text-cyan-500"
-                  }`}>
-                    <TrendingUp className="h-4.5 w-4.5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                        Market Cap Growth
-                      </span>
-                      {selectedMetricView === "company_growth" ? (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-cyan-600 text-white uppercase tracking-wider">
-                          Active View
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
-                          Market Cap
-                        </span>
-                      )}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`w-8.5 h-8.5 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                      selectedMetricView === "company_growth"
+                        ? "bg-cyan-600 text-white shadow-xs"
+                        : "bg-slate-200/80 dark:bg-zinc-700/60 text-slate-600 dark:text-zinc-300 group-hover:text-cyan-500"
+                    }`}>
+                      <TrendingUp className="h-4.5 w-4.5" />
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-zinc-400 truncate mt-0.5">
-                      {comp.name} enterprise market capitalization & corporate valuation trajectory
-                    </p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                          Market Cap Growth
+                        </span>
+                        {selectedMetricView === "company_growth" ? (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-cyan-600 text-white uppercase tracking-wider shrink-0">
+                            Active View
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-medium shrink-0">
+                            Market Cap
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-xs sm:text-sm font-bold font-mono text-cyan-600 dark:text-cyan-400 block leading-tight">
+                      {formatCompactCurrency(valuationNum, 1)}
+                    </span>
+                    <span className="text-[10px] text-slate-400 dark:text-zinc-500 block">
+                      {comp.annualRevenue || "$28.8M ARR"}
+                    </span>
                   </div>
                 </div>
-                <div className="text-right shrink-0 ml-3">
-                  <span className="text-xs font-bold font-mono text-cyan-600 dark:text-cyan-400 block">
-                    {comp.valuation || "$84.6M"}
-                  </span>
-                  <span className="text-[10px] text-slate-400 dark:text-zinc-500">
-                    {comp.annualRevenue || "$28.8M ARR"}
-                  </span>
-                </div>
+                <p className="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2 leading-relaxed">
+                  {comp.name} enterprise market capitalization & corporate valuation trajectory
+                </p>
               </button>
 
-              {/* Option 3: Field Growth (Sector specific, e.g. SaaS Field Growth, AI Field Growth) */}
+              {/* Option 3: Field Growth */}
               <button
                 type="button"
                 onClick={() => setSelectedMetricView("field_growth")}
-                className={`w-full p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between group ${
+                className={`w-full p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 group ${
                   selectedMetricView === "field_growth"
                     ? "bg-purple-500/10 dark:bg-purple-500/15 border-purple-500/50 shadow-xs ring-1 ring-purple-500/25"
                     : "bg-slate-50/70 dark:bg-zinc-800/40 border-slate-200/70 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-800/60"
                 }`}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={`w-8.5 h-8.5 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                    selectedMetricView === "field_growth"
-                      ? "bg-purple-600 text-white shadow-xs"
-                      : "bg-slate-200/80 dark:bg-zinc-700/60 text-slate-600 dark:text-zinc-300 group-hover:text-purple-500"
-                  }`}>
-                    <Globe className="h-4.5 w-4.5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                        {(comp.sector?.toLowerCase().includes("ai") || comp.sector?.toLowerCase().includes("artificial intelligence"))
-                          ? "AI Field Growth"
-                          : `${comp.sector || "Industry"} Field Growth`}
-                      </span>
-                      {selectedMetricView === "field_growth" ? (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-purple-600 text-white uppercase tracking-wider">
-                          Active View
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
-                          Macro Index
-                        </span>
-                      )}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`w-8.5 h-8.5 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                      selectedMetricView === "field_growth"
+                        ? "bg-purple-600 text-white shadow-xs"
+                        : "bg-slate-200/80 dark:bg-zinc-700/60 text-slate-600 dark:text-zinc-300 group-hover:text-purple-500"
+                    }`}>
+                      <Globe className="h-4.5 w-4.5" />
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-zinc-400 truncate mt-0.5">
-                      Global {comp.sector} industry category expansion, sector benchmark & CAGR
-                    </p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                          {(comp.sector?.toLowerCase().includes("ai") || comp.sector?.toLowerCase().includes("artificial intelligence"))
+                            ? "AI Field Growth"
+                            : `${comp.sector || "Industry"} Field Growth`}
+                        </span>
+                        {selectedMetricView === "field_growth" ? (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-purple-600 text-white uppercase tracking-wider shrink-0">
+                            Active View
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-medium shrink-0">
+                            Macro Index
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-xs sm:text-sm font-bold font-mono text-purple-600 dark:text-purple-400 block leading-tight">
+                      +26.4% CAGR
+                    </span>
+                    <span className="text-[10px] text-slate-400 dark:text-zinc-500 block">
+                      1,248.5 PTS
+                    </span>
                   </div>
                 </div>
-                <div className="text-right shrink-0 ml-3">
-                  <span className="text-xs font-bold font-mono text-purple-600 dark:text-purple-400 block">
-                    +26.4% CAGR
-                  </span>
-                  <span className="text-[10px] text-slate-400 dark:text-zinc-500">
-                    1,248.5 PTS
-                  </span>
-                </div>
+                <p className="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2 leading-relaxed">
+                  Global {comp.sector} industry category expansion, sector benchmark & CAGR
+                </p>
               </button>
             </div>
           </div>
-        </div>
 
-        {/* 2. Interactive Price Chart & Live Market Metrics Section */}
-        <div className="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
-          
-          {/* Chart Header Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-100 dark:border-zinc-800/60">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">
-                  {metricDisplayInfo.title}
-                </span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${metricDisplayInfo.badgeColor}`}>
-                  {metricDisplayInfo.badgeText}
-                </span>
-              </div>
-              <div className="flex items-baseline gap-2.5">
-                <span className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-white tracking-tight">
-                  {metricDisplayInfo.valueText}
-                </span>
-                <span className="text-xs text-slate-400 dark:text-zinc-500 font-medium">{metricDisplayInfo.unitText}</span>
-                
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono ${
-                  isPeriodPositive
-                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                    : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                }`}>
-                  {isPeriodPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                  <span>{metricDisplayInfo.changeText}</span>
-                </span>
-              </div>
-              <span className="text-[11px] text-slate-500 dark:text-zinc-400 block mt-0.5">
-                {metricDisplayInfo.subtitle} • {activePricePoint?.date || "Enterprise Market Cap Trajectory"}
-              </span>
-            </div>
-
-            {/* Timeframe Selectors */}
-            <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-zinc-800/80 rounded-xl">
-              {(["1D", "1W", "1M", "3M", "1Y", "ALL"] as const).map((tf) => (
-                <button
-                  key={tf}
-                  onClick={() => setTimeframe(tf)}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    timeframe === tf
-                      ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-xs"
-                      : "text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white"
-                  }`}
-                >
-                  {tf}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Interactive SVG Chart Canvas */}
-          <div className="relative w-full overflow-hidden select-none">
-            <svg
-              viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-              className="w-full h-56 sm:h-72 cursor-crosshair overflow-visible"
-              onMouseLeave={() => setHoveredPointIndex(null)}
-              onMouseMove={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                const mouseX = e.clientX - rect.left
-                const relativeX = (mouseX / rect.width) * svgWidth
-                const clampedX = Math.max(paddingX, Math.min(svgWidth - paddingX, relativeX))
-                const index = Math.round(((clampedX - paddingX) / (svgWidth - paddingX * 2)) * (chartPoints.length - 1))
-                if (index >= 0 && index < chartPoints.length) {
-                  setHoveredPointIndex(index)
-                }
-              }}
-            >
-              {/* Grid Lines */}
-              {[0.25, 0.5, 0.75].map((ratio) => {
-                const y = paddingY + ratio * (svgHeight - paddingY * 2)
-                return (
-                  <line
-                    key={ratio}
-                    x1={paddingX}
-                    y1={y}
-                    x2={svgWidth - paddingX}
-                    y2={y}
-                    stroke="currentColor"
-                    className="text-slate-200/60 dark:text-zinc-800/60"
-                    strokeDasharray="4 4"
-                    strokeWidth="1"
-                  />
-                )
-              })}
-
-              {/* Main Price Trend Curve (Pure Line Graph) */}
-              {pathD && (
-                <path
-                  d={pathD}
-                  fill="none"
-                  stroke={chartThemeColor}
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              )}
-
-              {/* Scrubbing Crosshair & Active Point */}
-              {hoveredPointIndex !== null && chartPoints[hoveredPointIndex] && (() => {
-                const pt = getCoordinates(hoveredPointIndex, chartPoints[hoveredPointIndex].price)
-                return (
-                  <g>
-                    <line
-                      x1={pt.x}
-                      y1={paddingY}
-                      x2={pt.x}
-                      y2={svgHeight - paddingY}
-                      stroke={chartThemeColor}
-                      strokeWidth="1"
-                      strokeDasharray="3 3"
-                    />
-                    <circle
-                      cx={pt.x}
-                      cy={pt.y}
-                      r="5"
-                      fill={chartThemeColor}
-                      stroke="#ffffff"
-                      strokeWidth="2"
-                    />
-                  </g>
-                )
-              })()}
-            </svg>
-
-            {/* Volume Histogram Bar Preview */}
-            <div className="flex items-end justify-between gap-1 h-6 px-4 pt-1 opacity-40">
-              {chartPoints.filter((_, i) => i % 2 === 0).map((pt, i) => (
-                <div
-                  key={i}
-                  style={{ height: `${Math.min(100, Math.max(15, (pt.volume / 9500) * 100))}%` }}
-                  className="flex-1 bg-slate-400 dark:bg-zinc-600 rounded-2xs"
-                />
-              ))}
-            </div>
+          {/* Dynamic PostgreSQL-Powered Interactive Price & Valuation Chart */}
+          <div className="pt-2">
+            <PriceChart
+              symbol={comp.ticker}
+              companyName={comp.name}
+              isPrivateCompany={comp.status?.toLowerCase().includes("private")}
+              initialRange="1M"
+            />
           </div>
 
           {/* Market Summary Strip (52-Week Range, Day Range, Volume) */}

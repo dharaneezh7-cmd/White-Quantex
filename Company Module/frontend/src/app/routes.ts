@@ -14,6 +14,9 @@ export default [
   route("publisher", "app/post/page.tsx"),
   route("community-post", "app/post/page.tsx"),
 
+  // 3-Month Quarterly Financials & Earnings
+  route("financials", "app/financials/page.tsx"),
+
   // Success
   route("registration-success", "app/registration-success/page.tsx"),
 

@@ -9,6 +9,8 @@ import {
   type MutualScheme,
   type VentureOpportunity,
 } from "../../services/explore/exploreService"
+import { useRecentlyVisited, recentVisitsService } from "../../services/explore/recentVisitsService"
+import { marketStore } from "../../services/market/useMarketPrices"
 import {
   Search,
   PieChart,
@@ -33,6 +35,7 @@ import { ExplorePositionsTab } from "../explore/components/ExplorePositionsTab"
 import { ExploreOrdersTab } from "../explore/components/ExploreOrdersTab"
 import { ExploreWatchlistsTab } from "../explore/components/ExploreWatchlistsTab"
 import { ExploreIndexTab } from "../explore/components/ExploreIndexTab"
+import { AppErrorBoundary } from "../../components/common/AppErrorBoundary"
 import { ExploreNewsTab } from "../explore/components/ExploreNewsTab"
 import { ExploreSchemeModal } from "../explore/components/ExploreSchemeModal"
 
@@ -180,18 +183,26 @@ export default function VenturesPage() {
   const liveMostActive = (backendOverview?.todaysMostActive || []).slice(0, 5)
   const liveNewHighs = (backendOverview?.todays52wHighs || []).slice(0, 5)
 
-  const liveRecentlyViewed = (backendOverview?.recentlyViewed || []).slice(0, 8).map((c) => ({
-    id: String(c.id),
-    name: c.name,
-    shortName: c.shortName,
-    ticker: c.ticker,
-    sector: c.sector,
-    status: "Active Trading",
-    valuation: c.valuation || "N/A",
-    change: c.change || "0.0%",
-    isPositive: c.isPositive !== false,
-    logoColor: c.logoBg || "bg-indigo-600",
-  }))
+  // ── Recently Viewed Entities (Stored in User's System Only to Reduce Server Load) ──
+  const localRecentlyVisited = useRecentlyVisited({ type: "venture", limit: 8 })
+  const liveRecentlyViewed = useMemo(() => {
+    return (localRecentlyVisited || []).map((c) => {
+      const liveQ = marketStore.getQuote(c.ticker)
+      return {
+        id: String(c.id || c.ticker),
+        name: c.name,
+        shortName: c.shortName || c.name,
+        ticker: c.ticker,
+        sector: c.sector || liveQ?.sector || "Private Equities",
+        status: c.status || "Active Trading",
+        valuation: c.valuation || "N/A",
+        change: liveQ ? liveQ.changePercentStr : (c.change || "+0.0%"),
+        isPositive: liveQ ? liveQ.isPositive : (c.isPositive !== false),
+        logoColor: c.logoColor || liveQ?.logoColor || "bg-indigo-600",
+        type: c.type || "venture",
+      }
+    })
+  }, [localRecentlyVisited])
 
   const liveRecentlyAdded = (backendOverview?.recentlyAdded || []).map((c) => ({
     id: String(c.id),
@@ -327,12 +338,22 @@ export default function VenturesPage() {
   const openCompanyProfile = (comp: any) => {
     if (!comp) return
     const ticker = comp.ticker || comp.symbol || comp.id
-    if (ticker && userId !== "anon") {
-      exploreService.recordRecentlyViewed(ticker).then(() => {
-        queryClient.invalidateQueries({ queryKey: ["explore", "overview", userId] })
+    if (ticker) {
+      const q = marketStore.getQuote(ticker)
+      recentVisitsService.recordVisit({
+        id: String(comp.id || ticker),
+        ticker,
+        name: comp.name || ticker,
+        shortName: comp.shortName || comp.name || ticker,
+        sector: comp.sector || q?.sector || "Private Equities",
+        valuation: comp.valuation,
+        change: q?.changePercentStr || comp.change || "+0.0%",
+        isPositive: q ? q.isPositive : (comp.isPositive !== false),
+        logoColor: comp.logoColor || comp.logoBg || q?.logoColor,
+        type: "venture",
       })
     }
-    navigate(`/companies/${ticker}`)
+    navigate(`/companies/${ticker}?from=ventures`)
   }
 
   // ── Derived Ventures Index Filters ───────────────────────────────────────
@@ -763,122 +784,123 @@ export default function VenturesPage() {
         {/* ═════════════════════════════════════════════════════════════════ */}
         {/* DYNAMIC BOTTOM CONTENT: Swaps based on selected nav tab           */}
         {/* ═════════════════════════════════════════════════════════════════ */}
+        <AppErrorBoundary title="Ventures Module Error" fallbackMessage="An issue occurred rendering this startup discovery section. Startup index directory remains active.">
+          {/* ─── 1. TAB: SEARCH / VENTURES OVERVIEW ─────────────────────────── */}
+          {activeNavTab === "search" && (
+            <ExploreOverviewTab
+              liveRecentlyViewed={liveRecentlyViewed}
+              liveMostInvested={liveMostInvested}
+              liveTopGainers={liveTopGainers}
+              liveLeastInvested={liveLeastInvested}
+              liveTopLosers={liveTopLosers}
+              liveMostActive={liveMostActive}
+              liveNewHighs={liveNewHighs}
+              liveRecentlyAdded={liveRecentlyAdded}
+              liveUpcoming={liveUpcoming}
+              liveRecommendations={liveRecommendations}
+              liveSchemes={liveSchemes}
+              allCompanies={allVentures}
+              toolsList={toolsList}
+              showAllSections={showAllSections}
+              handleToggleViewAll={handleToggleViewAll}
+              showAllRecentlyAdded={showAllRecentlyAdded}
+              setShowAllRecentlyAdded={setShowAllRecentlyAdded}
+              showAllUpcoming={showAllUpcoming}
+              setShowAllUpcoming={setShowAllUpcoming}
+              showAllRecommendations={showAllRecommendations}
+              setShowAllRecommendations={setShowAllRecommendations}
+              showAllSchemes={showAllSchemes}
+              setShowAllSchemes={setShowAllSchemes}
+              screenerSector={screenerSector}
+              setScreenerSector={setScreenerSector}
+              screenerTier={screenerTier}
+              setScreenerTier={setScreenerTier}
+              screenerValuation={screenerValuation}
+              setScreenerValuation={setScreenerValuation}
+              setSearchParams={setSearchParams}
+              onSelectCompany={openCompanyProfile}
+              onSelectScheme={(scheme) => setSelectedSchemeDetail(scheme)}
+              baseRoute="/ventures"
+              entityLabel="Ventures"
+            />
+          )}
 
-        {/* ─── 1. TAB: SEARCH / VENTURES OVERVIEW ─────────────────────────── */}
-        {activeNavTab === "search" && (
-          <ExploreOverviewTab
-            liveRecentlyViewed={liveRecentlyViewed}
-            liveMostInvested={liveMostInvested}
-            liveTopGainers={liveTopGainers}
-            liveLeastInvested={liveLeastInvested}
-            liveTopLosers={liveTopLosers}
-            liveMostActive={liveMostActive}
-            liveNewHighs={liveNewHighs}
-            liveRecentlyAdded={liveRecentlyAdded}
-            liveUpcoming={liveUpcoming}
-            liveRecommendations={liveRecommendations}
-            liveSchemes={liveSchemes}
-            allCompanies={allVentures}
-            toolsList={toolsList}
-            showAllSections={showAllSections}
-            handleToggleViewAll={handleToggleViewAll}
-            showAllRecentlyAdded={showAllRecentlyAdded}
-            setShowAllRecentlyAdded={setShowAllRecentlyAdded}
-            showAllUpcoming={showAllUpcoming}
-            setShowAllUpcoming={setShowAllUpcoming}
-            showAllRecommendations={showAllRecommendations}
-            setShowAllRecommendations={setShowAllRecommendations}
-            showAllSchemes={showAllSchemes}
-            setShowAllSchemes={setShowAllSchemes}
-            screenerSector={screenerSector}
-            setScreenerSector={setScreenerSector}
-            screenerTier={screenerTier}
-            setScreenerTier={setScreenerTier}
-            screenerValuation={screenerValuation}
-            setScreenerValuation={setScreenerValuation}
-            setSearchParams={setSearchParams}
-            onSelectCompany={openCompanyProfile}
-            onSelectScheme={(scheme) => setSelectedSchemeDetail(scheme)}
-            baseRoute="/ventures"
-            entityLabel="Ventures"
-          />
-        )}
+          {/* ─── 2. TAB: POSITIONS (PORTFOLIO HOLDINGS & ALLOCATION VIEW) ────── */}
+          {activeNavTab === "positions" && (
+            <ExplorePositionsTab
+              portfolioValue={portfolioValue}
+              totalInvested={totalInvested}
+              unrealizedGain={unrealizedGain}
+              totalReturnPercent={totalReturnPercent}
+              livePositions={livePositions}
+              onOpenDossier={(pos) => {
+                openCompanyProfile({ ticker: pos.ticker })
+              }}
+              entityLabel="Ventures"
+            />
+          )}
 
-        {/* ─── 2. TAB: POSITIONS (PORTFOLIO HOLDINGS & ALLOCATION VIEW) ────── */}
-        {activeNavTab === "positions" && (
-          <ExplorePositionsTab
-            portfolioValue={portfolioValue}
-            totalInvested={totalInvested}
-            unrealizedGain={unrealizedGain}
-            totalReturnPercent={totalReturnPercent}
-            livePositions={livePositions}
-            onOpenDossier={(pos) => {
-              openCompanyProfile({ ticker: pos.ticker })
-            }}
-            entityLabel="Ventures"
-          />
-        )}
+          {/* ─── 3. TAB: ORDERS (CORPORATE SECONDARY ORDER BOOK) ───────────────── */}
+          {activeNavTab === "orders" && (
+            <ExploreOrdersTab
+              liveOrders={liveOrders}
+              orderFilter={orderFilter}
+              entityLabel="Ventures"
+            />
+          )}
 
-        {/* ─── 3. TAB: ORDERS (CORPORATE SECONDARY ORDER BOOK) ───────────────── */}
-        {activeNavTab === "orders" && (
-          <ExploreOrdersTab
-            liveOrders={liveOrders}
-            orderFilter={orderFilter}
-            entityLabel="Ventures"
-          />
-        )}
+          {/* ─── 4 & 5. TABS: MY WATCHLIST & ALL WATCHLIST ───────────────────── */}
+          {(activeNavTab === "my_watchlist" || activeNavTab === "all_watchlist") && (
+            <ExploreWatchlistsTab
+              activeNavTab={activeNavTab}
+              allCompanies={allVentures}
+              onOpenDossier={openCompanyProfile}
+              entityLabel="Ventures"
+            />
+          )}
 
-        {/* ─── 4 & 5. TABS: MY WATCHLIST & ALL WATCHLIST ───────────────────── */}
-        {(activeNavTab === "my_watchlist" || activeNavTab === "all_watchlist") && (
-          <ExploreWatchlistsTab
-            activeNavTab={activeNavTab}
-            allCompanies={allVentures}
-            onOpenDossier={openCompanyProfile}
-            entityLabel="Ventures"
-          />
-        )}
+          {/* ─── 5.5. TAB: INDEX (OPERATING VENTURE ISSUERS DIRECTORY) ──────── */}
+          {activeNavTab === "index" && (
+            <ExploreIndexTab
+              allCompanies={allVentures}
+              filteredCompaniesIndex={filteredVenturesIndex}
+              totalRegisteredCount={backendOverview?.totalRegisteredCompanies || allVentures.length || 0}
+              aggregateValuation={backendOverview?.aggregateValuation}
+              legalEntitiesRatio={backendOverview?.legalEntitiesRatio}
+              averageTrustScore={backendOverview?.averageTrustScore}
+              indexSearchQuery={indexSearchQuery}
+              setIndexSearchQuery={setIndexSearchQuery}
+              indexSortBy={indexSortBy}
+              setIndexSortBy={setIndexSortBy}
+              indexViewMode={indexViewMode}
+              setIndexViewMode={setIndexViewMode}
+              indexSelectedLetter={indexSelectedLetter}
+              setIndexSelectedLetter={setIndexSelectedLetter}
+              indexSelectedSector={indexSelectedSector}
+              setIndexSelectedSector={setIndexSelectedSector}
+              alphabetLetters={alphabetLetters}
+              indexSectorList={indexSectorList}
+              onSelectCompany={openCompanyProfile}
+              entityLabel="Ventures"
+            />
+          )}
 
-        {/* ─── 5.5. TAB: INDEX (OPERATING VENTURE ISSUERS DIRECTORY) ──────── */}
-        {activeNavTab === "index" && (
-          <ExploreIndexTab
-            allCompanies={allVentures}
-            filteredCompaniesIndex={filteredVenturesIndex}
-            totalRegisteredCount={backendOverview?.totalRegisteredCompanies || allVentures.length || 0}
-            aggregateValuation={backendOverview?.aggregateValuation}
-            legalEntitiesRatio={backendOverview?.legalEntitiesRatio}
-            averageTrustScore={backendOverview?.averageTrustScore}
-            indexSearchQuery={indexSearchQuery}
-            setIndexSearchQuery={setIndexSearchQuery}
-            indexSortBy={indexSortBy}
-            setIndexSortBy={setIndexSortBy}
-            indexViewMode={indexViewMode}
-            setIndexViewMode={setIndexViewMode}
-            indexSelectedLetter={indexSelectedLetter}
-            setIndexSelectedLetter={setIndexSelectedLetter}
-            indexSelectedSector={indexSelectedSector}
-            setIndexSelectedSector={setIndexSelectedSector}
-            alphabetLetters={alphabetLetters}
-            indexSectorList={indexSectorList}
-            onSelectCompany={openCompanyProfile}
-            entityLabel="Ventures"
-          />
-        )}
-
-        {/* ─── 6. TAB: NEWS & NOTIFICATIONS (INVESTED VENTURES) ───────────── */}
-        {activeNavTab === "news" && (
-          <ExploreNewsTab
-            liveHoldingsNews={liveHoldingsNews}
-            liveHoldingsNotifications={liveHoldingsNotifications}
-            newsCompanyFilter={newsCompanyFilter as any}
-            setNewsCompanyFilter={setNewsCompanyFilter as any}
-            newsTypeFilter={newsTypeFilter}
-            setNewsTypeFilter={setNewsTypeFilter}
-            newsSearchInput={newsSearchInput}
-            setNewsSearchInput={setNewsSearchInput}
-            onToast={triggerToast}
-            baseRoute="/ventures"
-          />
-        )}
+          {/* ─── 6. TAB: NEWS & NOTIFICATIONS (INVESTED VENTURES) ───────────── */}
+          {activeNavTab === "news" && (
+            <ExploreNewsTab
+              liveHoldingsNews={liveHoldingsNews}
+              liveHoldingsNotifications={liveHoldingsNotifications}
+              newsCompanyFilter={newsCompanyFilter as any}
+              setNewsCompanyFilter={setNewsCompanyFilter as any}
+              newsTypeFilter={newsTypeFilter}
+              setNewsTypeFilter={setNewsTypeFilter}
+              newsSearchInput={newsSearchInput}
+              setNewsSearchInput={setNewsSearchInput}
+              onToast={triggerToast}
+              baseRoute="/ventures"
+            />
+          )}
+        </AppErrorBoundary>
 
         {/* ─── Mutual Investment Scheme Factsheet Modal ───────────────────── */}
         <ExploreSchemeModal

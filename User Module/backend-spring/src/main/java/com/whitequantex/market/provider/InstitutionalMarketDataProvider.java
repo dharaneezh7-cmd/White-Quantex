@@ -1,7 +1,9 @@
 package com.whitequantex.market.provider;
 
 import com.whitequantex.explore.entity.CompanyEntity;
+import com.whitequantex.explore.entity.VentureEntity;
 import com.whitequantex.explore.repository.CompanyRepository;
+import com.whitequantex.explore.repository.VentureRepository;
 import com.whitequantex.market.dto.CandleDto;
 import com.whitequantex.market.dto.LiveStockQuoteDto;
 import com.whitequantex.market.dto.PricePointDto;
@@ -18,6 +20,7 @@ import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Component("institutionalMarketDataProvider")
 @RequiredArgsConstructor
@@ -25,6 +28,7 @@ import java.util.List;
 public class InstitutionalMarketDataProvider implements MarketDataProvider {
 
     private final CompanyRepository companyRepository;
+    private final VentureRepository ventureRepository;
     private static final ZoneId NY_ZONE = ZoneId.of("America/New_York");
 
     @Override
@@ -44,10 +48,40 @@ public class InstitutionalMarketDataProvider implements MarketDataProvider {
 
     @Override
     public LiveStockQuoteDto fetchLatestQuote(String symbol) {
-        CompanyEntity company = companyRepository.findByTickerIgnoreCase(symbol).orElse(null);
-        if (company == null) return null;
+        CompanyEntity company = companyRepository.findByTickerIgnoreCase(symbol)
+                .orElseGet(() -> {
+                    try {
+                        return companyRepository.findById(UUID.fromString(symbol)).orElse(null);
+                    } catch (Exception e) {
+                        return null;
+                    }
+                });
 
-        BigDecimal basePrice = deriveBasePrice(symbol, company.getName(), company.getValuationNum());
+        if (company == null) {
+            VentureEntity venture = ventureRepository.findByTickerIgnoreCase(symbol)
+                    .orElseGet(() -> {
+                        try {
+                            return ventureRepository.findById(UUID.fromString(symbol)).orElse(null);
+                        } catch (Exception e) {
+                            return null;
+                        }
+                    });
+            if (venture != null) {
+                BigDecimal basePrice = deriveBasePrice(venture.getTicker(), venture.getName(), venture.getValuationNum());
+                return LiveStockQuoteDto.builder()
+                        .id(venture.getId())
+                        .ticker(venture.getTicker().toUpperCase())
+                        .name(venture.getName())
+                        .shortName(venture.getName())
+                        .sector(venture.getSector())
+                        .price(basePrice)
+                        .isPositive(true)
+                        .build();
+            }
+            return null;
+        }
+
+        BigDecimal basePrice = deriveBasePrice(company.getTicker(), company.getName(), company.getValuationNum());
         return LiveStockQuoteDto.builder()
                 .id(company.getId())
                 .ticker(company.getTicker().toUpperCase())
@@ -61,33 +95,55 @@ public class InstitutionalMarketDataProvider implements MarketDataProvider {
 
     @Override
     public List<PricePointDto> fetchHistoricalPrices(String symbol, String range) {
-        CompanyEntity company = companyRepository.findByTickerIgnoreCase(symbol).orElse(null);
-        BigDecimal currentPrice = deriveBasePrice(symbol, company != null ? company.getName() : symbol, company != null ? company.getValuationNum() : null);
+        String cleanSymbol = symbol != null ? symbol.toUpperCase().trim() : "WQ";
+        CompanyEntity company = companyRepository.findByTickerIgnoreCase(cleanSymbol)
+                .orElseGet(() -> {
+                    try {
+                        return companyRepository.findById(UUID.fromString(symbol)).orElse(null);
+                    } catch (Exception e) {
+                        return null;
+                    }
+                });
+
+        VentureEntity venture = null;
+        if (company == null) {
+            venture = ventureRepository.findByTickerIgnoreCase(cleanSymbol)
+                    .orElseGet(() -> {
+                        try {
+                            return ventureRepository.findById(UUID.fromString(symbol)).orElse(null);
+                        } catch (Exception e) {
+                            return null;
+                        }
+                    });
+        }
+
+        String entityName = company != null ? company.getName() : (venture != null ? venture.getName() : cleanSymbol);
+        BigDecimal valuationNum = company != null ? company.getValuationNum() : (venture != null ? venture.getValuationNum() : null);
+        BigDecimal currentPrice = deriveBasePrice(cleanSymbol, entityName, valuationNum);
 
         ZonedDateTime now = ZonedDateTime.now(NY_ZONE);
         List<PricePointDto> points = new ArrayList<>();
-        int hash = Math.abs((symbol + (company != null ? company.getName() : "WQ")).hashCode());
+        int hash = cleanSymbol.chars().reduce(0, Integer::sum);
 
         switch (range.toUpperCase()) {
             case "1D": {
-                // Intraday from 09:30 NY time to now (or 16:00) at 5-minute intervals
-                ZonedDateTime sessionStart = now.withHour(9).withMinute(30).withSecond(0).withNano(0);
-                if (now.isBefore(sessionStart)) {
-                    sessionStart = sessionStart.minusDays(1);
-                    while (sessionStart.getDayOfWeek() == DayOfWeek.SATURDAY || sessionStart.getDayOfWeek() == DayOfWeek.SUNDAY) {
-                        sessionStart = sessionStart.minusDays(1);
-                    }
-                }
-                long totalMinutes = Math.min(390, Math.max(30, ChronoUnit.MINUTES.between(sessionStart, now)));
-                int intervals = (int) (totalMinutes / 5);
-                double running = currentPrice.doubleValue() * 0.985;
+                // Intraday continuous 5-minute ticks (78 intervals)
+                int intervals = 78;
+                ZonedDateTime sessionStart = now.minusMinutes(intervals * 5L);
+                double startPrice = currentPrice.doubleValue() * (1.0 - (((hash % 15) - 7) / 250.0));
+                double totalDelta = currentPrice.doubleValue() - startPrice;
                 for (int i = 0; i <= intervals; i++) {
                     ZonedDateTime t = sessionStart.plusMinutes(i * 5L);
-                    double progress = (double) i / Math.max(1, intervals);
-                    double curve = Math.sin((i + hash % 5) * 0.4) * 0.008;
-                    double priceVal = running * (1.0 + curve + progress * 0.015);
+                    double progress = (double) i / (double) intervals;
+                    double cycle1 = Math.sin(progress * Math.PI * 2.5 + (hash % 3)) * (currentPrice.doubleValue() * 0.012);
+                    double cycle2 = Math.cos(progress * Math.PI * 4.0 + (hash % 5)) * (currentPrice.doubleValue() * 0.006);
+                    double noise = (((hash * (i + 13)) % 19) - 9) * 0.0008 * currentPrice.doubleValue();
+                    double dampening = 1.0 - Math.pow(progress, 3.0);
+                    double priceVal = (i == intervals)
+                            ? currentPrice.doubleValue()
+                            : Math.max(1.0, startPrice + (totalDelta * progress) + (cycle1 + cycle2 + noise) * dampening);
                     BigDecimal p = BigDecimal.valueOf(priceVal).setScale(2, RoundingMode.HALF_UP);
-                    long vol = (long) (Math.abs(Math.cos(i)) * 4500 + 800);
+                    long vol = (long) (Math.abs(Math.sin(i * 0.3)) * 6500 + 1200);
                     points.add(new PricePointDto(t.toInstant(), p, vol));
                 }
                 break;
@@ -120,7 +176,8 @@ public class InstitutionalMarketDataProvider implements MarketDataProvider {
                 while (cursor.isBefore(now) && count < 252) {
                     cursor = cursor.plusDays(1);
                     if (cursor.getDayOfWeek() != DayOfWeek.SATURDAY && cursor.getDayOfWeek() != DayOfWeek.SUNDAY) {
-                        double wave = Math.sin((count + hash % 13) * 0.15) * (currentPrice.doubleValue() * 0.045);
+                        double taper = 1.0 - Math.pow((double) count / 252.0, 2.0);
+                        double wave = Math.sin((count + hash % 13) * 0.15) * (currentPrice.doubleValue() * 0.045) * taper;
                         double priceVal = Math.max(1.0, startPrice + (count * step) + wave);
                         BigDecimal p = BigDecimal.valueOf(priceVal).setScale(2, RoundingMode.HALF_UP);
                         long vol = (long) (((hash * (count + 7)) % 120000) + 30000);
@@ -131,14 +188,17 @@ public class InstitutionalMarketDataProvider implements MarketDataProvider {
                 break;
             }
             case "5Y": {
-                // 260 weekly closes
+                // Exactly 260 weekly closes spanning 5 full calendar years
                 ZonedDateTime cursor = now.minusYears(5);
-                double startPrice = currentPrice.doubleValue() * 0.42;
+                double startPrice = Math.max(5.0, currentPrice.doubleValue() * 0.45);
                 double step = (currentPrice.doubleValue() - startPrice) / 260.0;
                 for (int w = 0; w < 260; w++) {
                     cursor = cursor.plusWeeks(1);
-                    double wave = Math.sin((w + hash % 11) * 0.08) * (currentPrice.doubleValue() * 0.08);
-                    double priceVal = Math.max(1.0, startPrice + (w * step) + wave);
+                    double progress = (double) w / 260.0;
+                    double taper = 1.0 - Math.pow(progress, 2.0);
+                    double wave1 = Math.sin((w + hash % 11) * 0.08) * (currentPrice.doubleValue() * 0.05) * taper;
+                    double wave2 = Math.cos((w + hash % 7) * 0.04) * (currentPrice.doubleValue() * 0.03) * taper;
+                    double priceVal = Math.max(1.0, startPrice + (w * step) + wave1 + wave2);
                     BigDecimal p = BigDecimal.valueOf(priceVal).setScale(2, RoundingMode.HALF_UP);
                     long vol = (long) (((hash * (w + 3)) % 450000) + 120000);
                     points.add(new PricePointDto(cursor.withHour(16).withMinute(0).toInstant(), p, vol));
@@ -148,14 +208,16 @@ public class InstitutionalMarketDataProvider implements MarketDataProvider {
             case "ALL":
             default: {
                 int founded = company != null && company.getFoundedYear() != null ? company.getFoundedYear() : 2020;
-                int years = Math.max(2, Math.min(10, now.getYear() - founded));
+                int years = Math.max(5, Math.min(10, now.getYear() - founded));
                 int totalPoints = years * 52;
                 ZonedDateTime cursor = now.minusYears(years);
                 double startPrice = currentPrice.doubleValue() * (0.25 + ((hash % 20) / 100.0));
                 double step = (currentPrice.doubleValue() - startPrice) / totalPoints;
                 for (int i = 0; i < totalPoints; i++) {
                     cursor = cursor.plusWeeks(1);
-                    double macro = Math.sin((i + hash % 9) * 0.05) * (currentPrice.doubleValue() * 0.10);
+                    double progress = (double) i / (double) totalPoints;
+                    double taper = 1.0 - Math.pow(progress, 2.0);
+                    double macro = Math.sin((i + hash % 9) * 0.05) * (currentPrice.doubleValue() * 0.08) * taper;
                     double priceVal = Math.max(0.5, startPrice + (i * step) + macro);
                     BigDecimal p = BigDecimal.valueOf(priceVal).setScale(2, RoundingMode.HALF_UP);
                     long vol = (long) (((hash * (i + 5)) % 600000) + 200000);
@@ -169,7 +231,9 @@ public class InstitutionalMarketDataProvider implements MarketDataProvider {
         if (!points.isEmpty()) {
             PricePointDto last = points.get(points.size() - 1);
             last.setPrice(currentPrice);
-            last.setTimestamp(Instant.now());
+            if (!"1D".equalsIgnoreCase(range)) {
+                last.setTimestamp(Instant.now());
+            }
         }
 
         return points;
@@ -209,7 +273,13 @@ public class InstitutionalMarketDataProvider implements MarketDataProvider {
     }
 
     private BigDecimal deriveBasePrice(String symbol, String name, BigDecimal valuationNum) {
-        int hash = Math.abs((symbol + (name != null ? name : "WQ")).hashCode());
+        String cleanSymbol = symbol != null ? symbol.toUpperCase().trim() : "WQ";
+        int hash = cleanSymbol.chars().reduce(0, Integer::sum);
+        if (valuationNum != null && valuationNum.compareTo(BigDecimal.ZERO) > 0) {
+            double valDouble = valuationNum.doubleValue();
+            double sharePrice = Math.max(10.0, Math.min(1500.0, valDouble / 2_500_000.0));
+            return BigDecimal.valueOf(sharePrice).setScale(2, RoundingMode.HALF_UP);
+        }
         double base = ((hash % 450) + 18) + ((hash % 99) / 100.0);
         return BigDecimal.valueOf(base).setScale(2, RoundingMode.HALF_UP);
     }

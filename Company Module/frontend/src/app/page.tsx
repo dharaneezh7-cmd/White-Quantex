@@ -77,6 +77,25 @@ export default function LandingPage() {
         <div className="absolute -top-40 left-1/2 -translate-x-1/2 h-[600px] w-[900px] rounded-full bg-[radial-gradient(circle_at_50%_40%,_rgba(74,85,104,0.3)_0%,_rgba(39,42,48,0.15)_50%,_transparent_80%)] blur-2xl pointer-events-none" />
 
         <div className="relative w-full px-4 sm:px-6 lg:px-8 xl:px-12 text-center">
+          {/* Corporate & Venture Dedicated Portal Notice */}
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="mb-8 inline-flex flex-wrap items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-emerald-500/10 border border-[#00d09c]/30 text-xs font-bold text-emerald-800 dark:text-[#00d09c] max-w-2xl mx-auto shadow-xs"
+          >
+            <Building2 className="h-4 w-4 shrink-0 text-[#00d09c]" />
+            <span>Dedicated Exclusively to Companies & Startup Ventures</span>
+            <span className="text-slate-400">•</span>
+            <a
+              href="http://localhost:7000"
+              className="inline-flex items-center gap-1 underline text-slate-700 dark:text-zinc-200 hover:text-[#00d09c]"
+            >
+              <span>General users visit User Portal</span>
+              <ArrowRight className="h-3 w-3" />
+            </a>
+          </motion.div>
+
           <motion.h1
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
@@ -95,7 +114,7 @@ export default function LandingPage() {
             transition={{ duration: 0.7, delay: 0.2 }}
             className="mt-6 text-lg sm:text-xl text-slate-600 dark:text-slate-300 max-w-3xl mx-auto leading-relaxed"
           >
-            White Quantex is the professional startup ecosystem where founders build, companies showcase innovation, investors discover opportunities, and mentors guide the next generation of entrepreneurs.
+            The dedicated White Quantex portal for corporate issuers and startup ventures to complete verification, file 3-month quarterly earnings, manage cap-table disclosures, and broadcast official corporate milestones to the White Quantex ecosystem.
           </motion.p>
 
           <motion.div
@@ -107,28 +126,37 @@ export default function LandingPage() {
             <Button
               size="lg"
               onClick={() => navigate("/register/company")}
-              className="h-12 px-7 rounded-none bg-green-500 hover:bg-green-600 text-white border border-green-600 shadow-md text-sm font-bold cursor-pointer inline-flex items-center gap-2"
+              className="h-12 px-6 rounded-none bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700 shadow-md text-sm font-bold cursor-pointer inline-flex items-center gap-2"
             >
               <Building2 className="h-4 w-4" />
-              <span>Register a Company</span>
+              <span>Register Company</span>
               <ArrowRight className="h-4 w-4" />
             </Button>
             <Button
               size="lg"
               onClick={() => navigate("/register/venture")}
-              className="h-12 px-7 rounded-none bg-purple-600 hover:bg-purple-700 text-white border border-purple-700 shadow-md text-sm font-bold cursor-pointer inline-flex items-center gap-2"
+              className="h-12 px-6 rounded-none bg-purple-600 hover:bg-purple-700 text-white border border-purple-700 shadow-md text-sm font-bold cursor-pointer inline-flex items-center gap-2"
             >
               <Rocket className="h-4 w-4" />
-              <span>Register a Venture</span>
+              <span>Register Venture</span>
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            <Button
+              size="lg"
+              onClick={() => navigate("/financials")}
+              className="h-12 px-6 rounded-none bg-blue-600 hover:bg-blue-700 text-white border border-blue-700 shadow-md text-sm font-bold cursor-pointer inline-flex items-center gap-2"
+            >
+              <TrendingUp className="h-4 w-4" />
+              <span>File Quarterly Financials</span>
               <ArrowRight className="h-4 w-4" />
             </Button>
             <Button
               size="lg"
               onClick={() => navigate("/post")}
-              className="h-12 px-7 rounded-none bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-zinc-950 dark:hover:bg-slate-100 shadow-md text-sm font-bold cursor-pointer inline-flex items-center gap-2"
+              className="h-12 px-6 rounded-none bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-zinc-950 dark:hover:bg-slate-100 shadow-md text-sm font-bold cursor-pointer inline-flex items-center gap-2"
             >
               <Radio className="h-4 w-4 text-[#00d09c]" />
-              <span>Post to Community</span>
+              <span>Publish Milestone</span>
             </Button>
             <Button
               variant="outline"

@@ -6,6 +6,7 @@ import { Comment } from "../models/Comment.mjs"
 import { Community } from "../models/Community.mjs"
 import { Follow } from "../models/Follow.mjs"
 import { authMiddleware } from "../middleware/auth.mjs"
+import { escapeRegex } from "../utils/security.mjs"
 
 const router = Router()
 router.use(authMiddleware)
@@ -20,6 +21,39 @@ function sanitizeHeadline(str = "") {
     .trim() || "Verified Ecosystem Participant"
 }
 
+// POST /api/members/company-profile - Register or update verified company presence
+router.post("/company-profile", async (req, res) => {
+  try {
+    const { name, username, ticker, accountType, role, verificationLevel, headline, bio, location } = req.body
+    if (!name || !username) {
+      return res.status(400).json({ success: false, message: "Company name and username/ticker required." })
+    }
+
+    const wqUserId = `company-${(ticker || username).toLowerCase()}`
+    const member = await Member.findOneAndUpdate(
+      { username: (ticker || username).toLowerCase() },
+      {
+        wqUserId,
+        name,
+        username: (ticker || username).toLowerCase(),
+        headline: headline || `Verified ${accountType || "Corporate"} Account @ ${name}`,
+        bio: bio || "Delaware C-Corp registered entity with official listing on White Quantex.",
+        location: location || "Delaware, United States",
+        role: role || "CORPORATE",
+        verificationLevel: verificationLevel || "PLATINUM",
+        trustScore: 98,
+        accountType: accountType || "COMPANY",
+        isActive: true,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    )
+
+    res.json({ success: true, message: "Company profile registered in community", data: member })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
 // GET /api/members - List ecosystem members (Founders & Investors)
 router.get("/", async (req, res) => {
   try {
@@ -30,13 +64,16 @@ router.get("/", async (req, res) => {
       filter.role = role.toUpperCase()
     }
 
-    if (query && query.trim()) {
-      filter.$or = [
-        { name: { $regex: query, $options: "i" } },
-        { headline: { $regex: query, $options: "i" } },
-        { location: { $regex: query, $options: "i" } },
-        { portfolioOrVenture: { $regex: query, $options: "i" } },
-      ]
+    if (query && typeof query === "string" && query.trim()) {
+      const safeQuery = escapeRegex(query, 80)
+      if (safeQuery) {
+        filter.$or = [
+          { name: { $regex: safeQuery, $options: "i" } },
+          { headline: { $regex: safeQuery, $options: "i" } },
+          { location: { $regex: safeQuery, $options: "i" } },
+          { portfolioOrVenture: { $regex: safeQuery, $options: "i" } },
+        ]
+      }
     }
 
     const members = await Member.find(filter)
@@ -79,13 +116,14 @@ router.get("/:id", async (req, res) => {
     const currentViewerId = req.user?.id || req.headers["x-wq-user-id"]
 
     // 1. Direct search by wqUserId, username, name, or ObjectId
+    const safeTarget = escapeRegex(rawTarget, 80)
     let member = await Member.findOne({
       $or: [
         { wqUserId: rawTarget },
         { username: rawTarget },
         { username: rawTarget.toLowerCase() },
         { name: rawTarget },
-        { name: new RegExp(`^${rawTarget}$`, "i") },
+        ...(safeTarget ? [{ name: new RegExp(`^${safeTarget}$`, "i") }] : []),
         ...(mongoose.Types.ObjectId.isValid(rawTarget) ? [{ _id: rawTarget }] : []),
       ],
       isActive: true,
@@ -120,8 +158,7 @@ router.get("/:id", async (req, res) => {
           { authorUsername: rawTarget.toLowerCase() },
           { wqAuthorId: rawTarget },
           { authorName: rawTarget },
-          { authorName: new RegExp(`^${rawTarget}$`, "i") },
-          { companyId: new RegExp(`^${rawTarget}$`, "i") },
+          ...(safeTarget ? [{ authorName: new RegExp(`^${safeTarget}$`, "i") }, { companyId: new RegExp(`^${safeTarget}$`, "i") }] : []),
           { ticker: rawTarget.toUpperCase() },
         ],
       }).lean()

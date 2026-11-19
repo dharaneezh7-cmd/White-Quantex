@@ -2,6 +2,7 @@ package com.whitequantex.market;
 
 import com.whitequantex.explore.entity.CompanyEntity;
 import com.whitequantex.explore.repository.CompanyRepository;
+import com.whitequantex.explore.repository.VentureRepository;
 import com.whitequantex.market.dto.MarketHistoryResponseDto;
 import com.whitequantex.market.entity.CompanyPriceCurrentEntity;
 import com.whitequantex.market.entity.CompanyPriceHistoryEntity;
@@ -46,6 +47,9 @@ public class HistoricalPriceServiceTest {
     private CompanyRepository companyRepository;
 
     @Mock
+    private VentureRepository ventureRepository;
+
+    @Mock
     private MarketDataProvider marketDataProvider;
 
     private HistoricalPriceService historicalPriceService;
@@ -59,6 +63,7 @@ public class HistoricalPriceServiceTest {
                 historyRepo,
                 candleRepo,
                 companyRepository,
+                ventureRepository,
                 null,
                 marketDataProvider
         );

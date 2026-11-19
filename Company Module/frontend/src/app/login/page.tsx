@@ -72,10 +72,10 @@ export default function LoginPage() {
             </span>
           </Link>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight pt-2">
-            Sign In to Your Account
+            Corporate & Venture Sign In
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Access your corporate issuer dashboard and venture registration.
+            Authorized access for corporate issuers, officers, C-Corps, LLCs, and startup venture founders.
           </p>
         </div>
 
@@ -163,12 +163,18 @@ export default function LoginPage() {
         </form>
 
         {/* Create Account link */}
-        <div className="pt-4 border-t border-slate-200 dark:border-zinc-800 text-center">
+        <div className="pt-4 border-t border-slate-200 dark:border-zinc-800 text-center space-y-2">
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Don't have an account yet?{" "}
+            Need to register an entity?{" "}
             <Link to="/signup" className="font-bold text-[#00d09c] hover:underline">
-              Create Account
+              Create Corporate / Founder Account
             </Link>
+          </p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            Individual user or retail investor?{" "}
+            <a href="http://localhost:7000/login" className="font-bold text-slate-600 dark:text-zinc-300 hover:text-[#00d09c] underline">
+              Sign in on User Portal
+            </a>
           </p>
         </div>
 

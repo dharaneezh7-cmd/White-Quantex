@@ -16,7 +16,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [termsAccepted, setTermsAccepted] = useState(false)
 
-  const setUser = useAuthStore((s) => s.setUser)
+  const { setUser, setCurrentSession } = useAuthStore()
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -121,6 +121,7 @@ export default function RegisterPage() {
       })
 
       setUser(user)
+      authService.getCurrentSession().then((s) => s && setCurrentSession(s))
       navigate(`/verify-otp?email=${encodeURIComponent(trimmedEmail)}`)
     } catch (err: any) {
       setError(

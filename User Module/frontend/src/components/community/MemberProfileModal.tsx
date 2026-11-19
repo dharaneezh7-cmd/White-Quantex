@@ -3,7 +3,7 @@ import {
   X, ShieldCheck, Globe, Users, Briefcase, Mail, Share2, Copy, Check,
   ExternalLink, Building2, Sparkles, Award, Radio, Calendar,
   ArrowRight, Heart, MessageSquare, TrendingUp, Lock, CheckCircle2, ShieldAlert,
-  Search, Loader2, UserPlus, UserCheck
+  Search, Loader2, UserPlus, UserCheck, Rocket, User
 } from "lucide-react"
 import { useNavigate } from "react-router"
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "../ui/dialog"
@@ -333,6 +333,9 @@ export function MemberProfileModal({
   const sampleDispatches = member.recentDispatches || []
   const postsCount = member.postsCount ?? sampleDispatches.length
   const location = member.location || "San Francisco, CA"
+  const rawType = ((member as any).accountType || (member as any).authorType || (member as any).authorAccountType || "").toUpperCase()
+  const isCompanyAccount = rawType === "COMPANY" || rawType === "CORPORATE_ISSUER"
+  const isVentureAccount = rawType === "VENTURE" || rawType === "VENTURE_CAPITAL"
   const headline = member.headline || member.category || (isVerified ? "Verified Ecosystem Participant" : "Ecosystem Member")
   const joinedDate = member.joinedDate || "Member since January 2024"
 
@@ -439,6 +442,15 @@ export function MemberProfileModal({
                     {displayName}
                   </h3>
                   <VerificationBadge level={member.verificationLevel || "NONE"} />
+                  {isCompanyAccount ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 inline-flex items-center gap-1 shrink-0">
+                      <Building2 className="h-2.5 w-2.5" /> Company Account
+                    </span>
+                  ) : isVentureAccount ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 inline-flex items-center gap-1 shrink-0">
+                      <Rocket className="h-2.5 w-2.5" /> Venture Account
+                    </span>
+                  ) : null}
                   {isSelf && (
                     <Badge className="text-[9px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-1.5 py-0 font-extrabold">
                       YOU

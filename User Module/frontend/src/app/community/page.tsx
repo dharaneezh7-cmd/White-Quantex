@@ -62,7 +62,7 @@ function getNotificationIcon(type: string) {
   }
 }
 
-// Helper to determine if a post originates from an operating Company Account
+// Helper to determine if a post originates from an operating Company Account (Registered via http://localhost:7001)
 export function isCompanyAccountPost(p: Post): boolean {
   const authorType = (p.authorType || p.author?.authorType || "").toUpperCase()
   const accountType = (p.authorAccountType || p.author?.accountType || "").toUpperCase()
@@ -72,39 +72,10 @@ export function isCompanyAccountPost(p: Post): boolean {
   if (p.id?.startsWith("official-post-") || p.id?.startsWith("company-post-")) {
     return true
   }
-  // Must not be a venture account
-  if (authorType === "VENTURE" || accountType === "VENTURE" || accountType === "VENTURE_CAPITAL" || p.id?.startsWith("venture-post-")) {
-    return false
-  }
-  const role = (p.author?.role || "").toUpperCase()
-  if (role === "INVESTOR") return false
-  const headline = (p.author?.headline || "").toLowerCase()
-  const isVentureHeadline =
-    headline.includes("venture") ||
-    headline.includes("general partner") ||
-    headline.includes("managing partner") ||
-    headline.includes("managing director @") ||
-    headline.includes("capital") ||
-    headline.includes("fund") ||
-    headline.includes("syndicate")
-  if (isVentureHeadline) return false
-  const isCorporate =
-    role === "CORPORATE" ||
-    headline.includes("ceo @") ||
-    headline.includes("founder & ceo") ||
-    headline.includes("founder @") ||
-    headline.includes("chief executive") ||
-    headline.includes("corp") ||
-    headline.includes("technologies") ||
-    headline.includes("energy") ||
-    headline.includes("robotics") ||
-    headline.includes("neurotech") ||
-    headline.includes("biotech") ||
-    headline.includes("labs")
-  return isCorporate
+  return false
 }
 
-// Helper to determine if a post originates from an institutional Venture Account
+// Helper to determine if a post originates from an institutional Venture Account (Registered via http://localhost:7001)
 export function isVentureAccountPost(p: Post): boolean {
   const authorType = (p.authorType || p.author?.authorType || "").toUpperCase()
   const accountType = (p.authorAccountType || p.author?.accountType || "").toUpperCase()
@@ -114,25 +85,12 @@ export function isVentureAccountPost(p: Post): boolean {
   if (p.id?.startsWith("venture-post-")) {
     return true
   }
-  // Must not be a company account
-  if (authorType === "COMPANY" || accountType === "COMPANY" || accountType === "CORPORATE_ISSUER" || p.id?.startsWith("official-post-") || p.id?.startsWith("company-post-")) {
-    return false
-  }
-  const role = (p.author?.role || "").toUpperCase()
-  if (role === "CORPORATE") return false
-  const headline = (p.author?.headline || "").toLowerCase()
-  const isVentureHeadline =
-    headline.includes("venture") ||
-    headline.includes("general partner") ||
-    headline.includes("managing partner") ||
-    headline.includes("partner @") ||
-    headline.includes("managing director") ||
-    headline.includes("capital") ||
-    headline.includes("fund") ||
-    headline.includes("syndicate") ||
-    headline.includes("horizons") ||
-    headline.includes("sequoia")
-  return role === "INVESTOR" || isVentureHeadline
+  return false
+}
+
+// Helper to determine if a post originates from a User Account (Registered via http://localhost:7000)
+export function isUserAccountPost(p: Post): boolean {
+  return !isCompanyAccountPost(p) && !isVentureAccountPost(p)
 }
 
 // Resolve the official Company or Venture Name when posting from a corporate or venture account
@@ -141,7 +99,7 @@ export function resolvePostAccountName(post: Post): string {
   const isVenture = isVentureAccountPost(post)
 
   if (!isCompany && !isVenture) {
-    return post.author?.displayName || (post as any).authorName || "Alexander Vance"
+    return post.author?.displayName || (post as any).authorName || "Ecosystem Member"
   }
 
   // 1. If explicit companyId is set and is human-readable (not a generic internal ID)
@@ -165,7 +123,7 @@ export function resolvePostAccountName(post: Post): string {
       AFSN: "AeroFusion Technologies",
       OCGN: "OmniCognition Labs",
       VGRD: "VerdeGrid Energy Systems",
-      TFLOW: "TeraFlow BioTech",
+      TFLOW: "TechFlow AI Solutions Inc.",
       GGRID: "NovaGrid Energy Networks",
       NVMD: "NovaMind AI",
       MSRB: "MediSync Robotics Corp",
@@ -1058,16 +1016,16 @@ export default function CommunityPage() {
     {
       id: "news-3",
       companyId: "c3",
-      companyName: "TeraFlow BioTech",
+      companyName: "TechFlow AI Solutions Inc.",
       ticker: "TFLOW",
-      logoColor: "#ec4899",
-      category: "Technology & Patents",
-      title: "USPTO Grants Milestone Patent for High-Throughput Synthetic Protein Folding Pipeline",
-      snippet: "Statutory patent registration approved for algorithmic biomarker optimization, slashing clinical pre-validation cycles by 62%.",
+      logoColor: "#6366f1",
+      category: "Enterprise Distributed Inference",
+      title: "TechFlow AI Closes $40M Enterprise Cloud Inference Deal; ARR Exceeds $15M",
+      snippet: "TechFlow AI signed a 3-year enterprise cloud compute agreement with a Fortune 50 consortium. Annual recurring revenue (ARR) surged past $15.2M (+112% YoY), reinforcing strong momentum leading into its upcoming Series B pricing round.",
       sentiment: "BULLISH",
-      impactMetric: "Patent Granted",
-      source: "USPTO Registry / Reuters",
-      readTime: "2 min read",
+      impactMetric: "+18.4% Uplift",
+      source: "TechCrunch Venture",
+      readTime: "3 min read",
       isActionRequired: false,
       publishedAt: "2 hours ago",
     },
@@ -3574,6 +3532,7 @@ export default function CommunityPage() {
                                     <Rocket className="h-2.5 w-2.5" /> Venture Account
                                   </span>
                                 )}
+                                {/* For regular user accounts registered on http://localhost:7000, do not show any badge */}
                               </div>
                               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                                 {accountHeadline}

@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { Link, useNavigate } from "react-router"
+import { useState, useEffect } from "react"
+import { Link, useNavigate, Navigate } from "react-router"
 import { motion } from "framer-motion"
 import {
   ArrowRight, Users, Zap,
@@ -9,6 +9,8 @@ import {
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { VerificationBadge } from "../components/shared/VerificationBadge"
+import { useAuthStore } from "../stores/auth-store"
+import { authService } from "../services/auth/authService"
 
 const COMPARISON_DATA = [
   { feature: "Startup Community & Networking", wq: true, linkedin: false, angellist: false, crunchbase: false, reddit: true },
@@ -54,7 +56,69 @@ const ROADMAP_DATA = [
 
 export default function LandingPage() {
   const navigate = useNavigate()
+  const { isAuthenticated, user, clearAuth } = useAuthStore()
 
+  // Track verification state: if client state indicates a session, verify validity
+  const [isVerifying, setIsVerifying] = useState(isAuthenticated && !!user)
+  const [hasValidSession, setHasValidSession] = useState(isAuthenticated && !!user)
+
+  useEffect(() => {
+    let active = true
+
+    if (!isAuthenticated || !user) {
+      setIsVerifying(false)
+      setHasValidSession(false)
+      return
+    }
+
+    // Double check that the session is genuinely valid and active in Spring Boot
+    authService
+      .getCurrentSession()
+      .then((session) => {
+        if (!active) return
+        if (session) {
+          setHasValidSession(true)
+        } else {
+          clearAuth()
+          setHasValidSession(false)
+        }
+        setIsVerifying(false)
+      })
+      .catch((err) => {
+        if (!active) return
+        if (err?.response?.status === 401 || err?.response?.status === 403) {
+          clearAuth()
+          setHasValidSession(false)
+        } else {
+          // If offline or network check error, honor client session
+          setHasValidSession(true)
+        }
+        setIsVerifying(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [isAuthenticated, user, clearAuth])
+
+  // When user has a valid session for their account, directly redirect to the holding section
+  if (hasValidSession) {
+    return <Navigate to="/holdings" replace />
+  }
+
+  // Non-blocking minimal spinner while checking active session
+  if (isVerifying) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--wq-bg)]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-[#00d09c] border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs font-mono text-slate-500">Checking active session...</span>
+        </div>
+      </div>
+    )
+  }
+
+  // If not authenticated or no valid session, display the home page
   return (
     <div className="relative overflow-hidden bg-white text-slate-900 dark:bg-[#09090b] dark:text-slate-50 min-h-screen">
       

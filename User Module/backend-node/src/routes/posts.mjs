@@ -8,6 +8,7 @@ import { Notification } from "../models/Notification.mjs"
 import { Member } from "../models/Member.mjs"
 import { authMiddleware, requireAuth } from "../middleware/auth.mjs"
 import { recommendationService } from "../services/recommendationService.mjs"
+import { escapeRegex, sanitizeHtml } from "../utils/security.mjs"
 
 const router = Router()
 
@@ -174,22 +175,28 @@ router.get("/", async (req, res) => {
     }
 
     if (tag && tag !== "All") {
-      filter.hashtags = { $in: [new RegExp(`^${tag}$`, "i")] }
+      const safeTag = escapeRegex(tag, 50)
+      if (safeTag) {
+        filter.hashtags = { $in: [new RegExp(`^${safeTag}$`, "i")] }
+      }
     }
 
-    if (search) {
-      const searchRegex = { $regex: search, $options: "i" }
-      const searchConditions = [
-        { content: searchRegex },
-        { authorName: searchRegex },
-        { authorHeadline: searchRegex },
-        { hashtags: searchRegex },
-      ]
-      if (filter.$or) {
-        filter.$and = [{ $or: filter.$or }, { $or: searchConditions }]
-        delete filter.$or
-      } else {
-        filter.$or = searchConditions
+    if (search && typeof search === "string" && search.trim()) {
+      const safeSearch = escapeRegex(search, 100)
+      if (safeSearch) {
+        const searchRegex = { $regex: safeSearch, $options: "i" }
+        const searchConditions = [
+          { content: searchRegex },
+          { authorName: searchRegex },
+          { authorHeadline: searchRegex },
+          { hashtags: searchRegex },
+        ]
+        if (filter.$or) {
+          filter.$and = [{ $or: filter.$or }, { $or: searchConditions }]
+          delete filter.$or
+        } else {
+          filter.$or = searchConditions
+        }
       }
     }
 
@@ -551,19 +558,35 @@ router.post("/", requireAuth, async (req, res) => {
     // Extract hashtags from content (e.g. #AI, #CleanTech)
     const extractedHashtags = (content.match(/#[a-zA-Z0-9_]+/g) || []).map((t) => t.replace("#", ""))
 
+    const isCompanyPost =
+      req.body.authorAccountType === "COMPANY" ||
+      req.body.authorAccountType === "VENTURE" ||
+      req.body.authorType === "COMPANY" ||
+      req.body.authorType === "VENTURE" ||
+      user.accountType === "COMPANY" ||
+      user.accountType === "VENTURE"
+
+    const postAuthorName = (isCompanyPost && req.body.authorName) ? req.body.authorName : user.name
+    const postAuthorUsername = (isCompanyPost && req.body.ticker) ? req.body.ticker.toLowerCase() : user.username
+    const postAuthorHeadline = (isCompanyPost && req.body.authorHeadline) ? req.body.authorHeadline : user.headline
+    const postAuthorRole = isCompanyPost ? (req.body.authorRole || "CORPORATE") : (user.role || "FOUNDER")
+    const postAuthorVerification = isCompanyPost ? "PLATINUM" : (user.verificationLevel || "GOLD")
+    const postAuthorAccountType = isCompanyPost ? (req.body.authorAccountType || "COMPANY") : (user.accountType || "INDIVIDUAL")
+    const postAuthorType = isCompanyPost ? postAuthorAccountType : (user.accountType === "COMPANY" ? "COMPANY" : user.accountType === "VENTURE" ? "VENTURE" : "USER")
+
     const post = new Post({
       wqAuthorId,
-      authorName: user.name,
-      authorUsername: user.username,
+      authorName: postAuthorName,
+      authorUsername: postAuthorUsername,
       authorAvatarUrl: user.avatarUrl || "",
-      authorHeadline: user.headline,
-      authorRole: user.role || "FOUNDER",
-      authorVerificationLevel: user.verificationLevel || "NONE",
-      authorAccountType: user.accountType || "INDIVIDUAL",
-      authorType: user.accountType === "COMPANY" ? "COMPANY" : user.accountType === "VENTURE" ? "VENTURE" : "USER",
-      companyId: companyId || null,
+      authorHeadline: postAuthorHeadline,
+      authorRole: postAuthorRole,
+      authorVerificationLevel: postAuthorVerification,
+      authorAccountType: postAuthorAccountType,
+      authorType: postAuthorType,
+      companyId: companyId || (isCompanyPost ? postAuthorName : null),
       ticker: ticker || null,
-      content: content.trim(),
+      content: sanitizeHtml(content.trim()),
       mediaUrls: mediaUrls || [],
       videoUrl: videoUrl || null,
       postType: ["TEXT", "IMAGE", "VIDEO", "POLL", "LINK", "POST", "UPDATE"].includes((postType || "").toUpperCase())
@@ -849,6 +872,7 @@ router.post("/:id/comments", requireAuth, async (req, res) => {
     const postId = req.params.id
     const { content } = req.body
     const wqAuthorId = req.user.id
+    const wqUserId = req.user.id
     const authorName = req.user.name
 
     if (!content || !content.trim()) {
@@ -860,7 +884,7 @@ router.post("/:id/comments", requireAuth, async (req, res) => {
       wqAuthorId,
       authorName,
       authorAvatarUrl: req.user.avatarUrl || "",
-      content: content.trim(),
+      content: sanitizeHtml(content.trim()),
     })
 
     await comment.save()

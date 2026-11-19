@@ -1,7 +1,9 @@
 package com.whitequantex.market.service;
 
 import com.whitequantex.explore.entity.CompanyEntity;
+import com.whitequantex.explore.entity.VentureEntity;
 import com.whitequantex.explore.repository.CompanyRepository;
+import com.whitequantex.explore.repository.VentureRepository;
 import com.whitequantex.market.dto.*;
 import com.whitequantex.market.entity.CompanyPriceCurrentEntity;
 import com.whitequantex.market.entity.CompanyPriceHistoryEntity;
@@ -18,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -27,24 +31,37 @@ import java.util.stream.Collectors;
 @Slf4j
 public class HistoricalPriceService {
 
+    private static final ZoneId NY_ZONE = ZoneId.of("America/New_York");
+
     private final CompanyPriceCurrentRepository currentRepo;
     private final CompanyPriceHistoryRepository historyRepo;
     private final CompanyPriceCandleRepository candleRepo;
     private final CompanyRepository companyRepository;
+    private final VentureRepository ventureRepository;
     private final HistoricalBackfillService backfillService;
 
     @Qualifier("institutionalMarketDataProvider")
     private final MarketDataProvider marketDataProvider;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public MarketHistoryResponseDto getHistoricalData(String symbol, String range) {
         String normalizedSymbol = symbol.toUpperCase().trim();
         String targetRange = (range != null ? range : "1M").toUpperCase().trim();
 
-        // 1. Resolve company
+        // 1. Resolve company or venture
         Optional<CompanyEntity> companyOpt = companyRepository.findByTickerIgnoreCase(normalizedSymbol);
-        String companyName = companyOpt.map(CompanyEntity::getName).orElse(normalizedSymbol);
+        String companyName = companyOpt.map(CompanyEntity::getName).orElse(null);
         UUID companyId = companyOpt.map(CompanyEntity::getId).orElse(null);
+
+        if (companyId == null) {
+            Optional<VentureEntity> ventureOpt = ventureRepository.findByTickerIgnoreCase(normalizedSymbol);
+            if (ventureOpt.isPresent()) {
+                companyName = ventureOpt.get().getName();
+            } else {
+                companyName = normalizedSymbol;
+            }
+            companyId = null; // Ventures do not exist in companies table; company_id is a foreign key
+        }
 
         // 2. Compute timestamp cutoff
         Instant now = Instant.now();
@@ -53,26 +70,102 @@ public class HistoricalPriceService {
         // 3. Query PostgreSQL for permanent history
         List<CompanyPriceHistoryEntity> records = historyRepo.findHistorySince(normalizedSymbol, since);
 
-        // 4. If records are sparse or missing, backfill from provider and persist immediately
-        if (records.isEmpty() || (targetRange.equals("1D") && records.size() < 10) || (targetRange.equals("1M") && records.size() < 20)) {
+        // 4. If records are sparse, missing, or do not span the requested historical window, backfill from provider
+        boolean needsBackfill = records.isEmpty()
+                || (targetRange.equals("1D") && records.size() < 40)
+                || (targetRange.equals("1M") && records.size() < 20)
+                || (targetRange.equals("5Y") && (records.size() < 200 || records.get(0).getPriceTimestamp().isAfter(since.plus(180, ChronoUnit.DAYS))))
+                || (targetRange.equals("ALL") && (records.size() < 200 || records.get(0).getPriceTimestamp().isAfter(since.plus(365, ChronoUnit.DAYS))));
+
+        List<PricePointDto> rawPoints;
+        if (needsBackfill) {
             List<PricePointDto> providerPoints = marketDataProvider.fetchHistoricalPrices(normalizedSymbol, targetRange);
             if (providerPoints != null && !providerPoints.isEmpty()) {
-                // Persist new points to PostgreSQL
+                try {
+                    historyRepo.deleteBySymbolIgnoreCase(normalizedSymbol);
+                } catch (Exception ex) {
+                    log.warn("Could not delete old history for {}: {}", normalizedSymbol, ex.getMessage());
+                }
                 persistFetchedPoints(companyId, normalizedSymbol, providerPoints);
-                records = historyRepo.findHistorySince(normalizedSymbol, since);
+                rawPoints = new ArrayList<>(providerPoints);
+            } else {
+                rawPoints = records.stream()
+                        .map(r -> new PricePointDto(r.getPriceTimestamp(), r.getPrice(), r.getVolume()))
+                        .sorted(Comparator.comparing(PricePointDto::getTimestamp))
+                        .collect(Collectors.toList());
+            }
+        } else {
+            rawPoints = records.stream()
+                    .map(r -> new PricePointDto(r.getPriceTimestamp(), r.getPrice(), r.getVolume()))
+                    .sorted(Comparator.comparing(PricePointDto::getTimestamp))
+                    .collect(Collectors.toList());
+        }
+
+        // Safety fallback: if rawPoints is still empty, synthesize directly from provider
+        if (rawPoints.isEmpty()) {
+            List<PricePointDto> directPoints = marketDataProvider.fetchHistoricalPrices(normalizedSymbol, targetRange);
+            if (directPoints != null && !directPoints.isEmpty()) {
+                rawPoints = new ArrayList<>(directPoints);
             }
         }
 
-        // 5. Convert to PricePointDto
-        List<PricePointDto> rawPoints = records.stream()
-                .map(r -> new PricePointDto(r.getPriceTimestamp(), r.getPrice(), r.getVolume()))
-                .sorted(Comparator.comparing(PricePointDto::getTimestamp))
-                .collect(Collectors.toList());
+        // 6. Aggregate by date first for non-1D historical ranges (1M, 1Y, 5Y, ALL)
+        if (!"1D".equalsIgnoreCase(targetRange) && !rawPoints.isEmpty()) {
+            rawPoints = aggregateHistoricalPointsByDate(rawPoints);
+        }
 
-        // 6. Check latest price from current repo or last point
+        // 7. Check latest price from provider or current repo
         Optional<CompanyPriceCurrentEntity> currentEntityOpt = currentRepo.findBySymbolIgnoreCase(normalizedSymbol);
-        BigDecimal currentPrice = currentEntityOpt.map(CompanyPriceCurrentEntity::getLatestPrice)
-                .orElse(rawPoints.isEmpty() ? BigDecimal.ZERO : rawPoints.get(rawPoints.size() - 1).getPrice());
+        LiveStockQuoteDto liveQuote = marketDataProvider.fetchLatestQuote(normalizedSymbol);
+        BigDecimal currentPrice = (liveQuote != null && liveQuote.getPrice() != null)
+                ? liveQuote.getPrice()
+                : currentEntityOpt.map(CompanyPriceCurrentEntity::getLatestPrice)
+                        .orElse(rawPoints.isEmpty() ? BigDecimal.ZERO : rawPoints.get(rawPoints.size() - 1).getPrice());
+
+        // 8. Self-healing check: detect legacy hash mismatches, overnight jump discontinuities (>25%), or sawtooth interleaving
+        boolean hasDiscontinuity = false;
+        if (!rawPoints.isEmpty() && currentPrice.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal firstPrice = rawPoints.get(0).getPrice();
+            double ratioFirst = firstPrice.doubleValue() / currentPrice.doubleValue();
+            if (ratioFirst > 2.5 || ratioFirst < 0.25) {
+                hasDiscontinuity = true;
+            }
+            if (rawPoints.size() >= 2) {
+                BigDecimal penultimate = rawPoints.get(rawPoints.size() - 2).getPrice();
+                double jump = currentPrice.doubleValue() / penultimate.doubleValue();
+                if (jump > 1.25 || jump < 0.80) {
+                    hasDiscontinuity = true;
+                }
+            }
+            // Multi-point sawtooth / interleaved oscillation detector
+            if (rawPoints.size() >= 6) {
+                int oscillations = 0;
+                for (int i = 1; i < Math.min(rawPoints.size(), 30); i++) {
+                    double prev = rawPoints.get(i - 1).getPrice().doubleValue();
+                    double cur = rawPoints.get(i).getPrice().doubleValue();
+                    if (prev > 0) {
+                        double r = cur / prev;
+                        if (r > 1.15 || r < 0.85) {
+                            oscillations++;
+                        }
+                    }
+                }
+                if (oscillations >= 4) {
+                    hasDiscontinuity = true;
+                }
+            }
+        }
+
+        if (hasDiscontinuity) {
+            List<PricePointDto> fresh = marketDataProvider.fetchHistoricalPrices(normalizedSymbol, targetRange);
+            if (fresh != null && !fresh.isEmpty()) {
+                rawPoints = fresh;
+                try {
+                    historyRepo.deleteBySymbolIgnoreCase(normalizedSymbol);
+                    persistFetchedPoints(companyId, normalizedSymbol, fresh);
+                } catch (Exception ignored) {}
+            }
+        }
 
         if (rawPoints.isEmpty()) {
             return MarketHistoryResponseDto.builder()
@@ -314,5 +407,20 @@ public class HistoricalPriceService {
 
         sampled.add(data.get(data.size() - 1)); // Always add the last point
         return sampled;
+    }
+
+    private List<PricePointDto> aggregateHistoricalPointsByDate(List<PricePointDto> points) {
+        if (points.isEmpty()) return points;
+        Map<LocalDate, PricePointDto> dateMap = new LinkedHashMap<>();
+        for (PricePointDto p : points) {
+            LocalDate date = p.getTimestamp().atZone(NY_ZONE).toLocalDate();
+            PricePointDto existing = dateMap.get(date);
+            long vol = (existing != null && existing.getVolume() != null ? existing.getVolume() : 0L)
+                    + (p.getVolume() != null ? p.getVolume() : 1000L);
+            dateMap.put(date, new PricePointDto(p.getTimestamp(), p.getPrice(), vol));
+        }
+        List<PricePointDto> aggregated = new ArrayList<>(dateMap.values());
+        aggregated.sort(Comparator.comparing(PricePointDto::getTimestamp));
+        return aggregated;
     }
 }

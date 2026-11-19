@@ -357,7 +357,7 @@ export default function MessagesPage() {
         setThreadData((prev) => {
           if (!prev) {
             // Thread not yet loaded into memory: immediately trigger fetch
-            fetchThread(currentActiveId)
+            if (currentActiveId) fetchThread(currentActiveId)
             return null
           }
           if (prev.messages.some((m) => m.id === msg.id)) return prev

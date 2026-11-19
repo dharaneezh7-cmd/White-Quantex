@@ -16,6 +16,7 @@ import java.util.UUID;
 @Repository
 public interface CompanyRepository extends JpaRepository<CompanyEntity, UUID> {
     Optional<CompanyEntity> findByTickerIgnoreCase(String ticker);
+    Optional<CompanyEntity> findByNameIgnoreCase(String name);
     Optional<CompanyEntity> findByCikIgnoreCase(String cik);
 
     List<CompanyEntity> findByIsActiveTrueOrderByCreatedAtDesc();

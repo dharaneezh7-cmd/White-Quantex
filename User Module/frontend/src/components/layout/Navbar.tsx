@@ -16,11 +16,14 @@ import {
   Activity,
   HelpCircle,
   MessageSquare,
+  Building2,
+  ExternalLink,
 } from "lucide-react"
 import { cn, getInitials } from "../../lib/utils"
 import { NAV_LINKS } from "../../constants"
 import { useTheme } from "../../context/ThemeContext"
 import { useAuthStore } from "../../stores/auth-store"
+import { authService } from "../../services/auth/authService"
 import { Button } from "../ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar"
 import {
@@ -62,9 +65,15 @@ export const Navbar = React.memo(function Navbar() {
     setMobileOpen(false)
   }, [location.pathname])
 
-  const handleSignOut = useCallback(() => {
-    clearAuth()
-    navigate("/")
+  const handleSignOut = useCallback(async () => {
+    try {
+      await authService.logout()
+    } catch (err) {
+      console.warn("Logout error:", err)
+    } finally {
+      clearAuth()
+      navigate("/login")
+    }
   }, [clearAuth, navigate])
 
   return (
@@ -79,7 +88,7 @@ export const Navbar = React.memo(function Navbar() {
       <nav className="max-w-[1440px] mx-auto flex h-full items-center justify-between px-4 sm:px-6 lg:px-8 xl:px-12">
         {/* Left: Logo + Nav */}
         <div className="flex items-center gap-10">
-          <Link to="/" className="flex items-center gap-2.5 group">
+          <Link to={isAuthenticated ? "/holdings" : "/"} className="flex items-center gap-2.5 group">
             <div className="flex h-8 w-8 items-center justify-center rounded-none bg-slate-900 text-white dark:bg-white dark:text-zinc-950 font-black">
               <span className="text-xs">WQ</span>
             </div>
@@ -181,6 +190,19 @@ export const Navbar = React.memo(function Navbar() {
             <span className="sr-only">Toggle theme</span>
           </Button>
 
+          {/* Corporate & Venture Portal Link */}
+          <a
+            href="http://localhost:7001"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white border border-slate-200/80 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-900/60 transition-colors mr-1 cursor-pointer"
+            title="Corporate Issuers & Startup Ventures Portal"
+          >
+            <Building2 className="h-3.5 w-3.5 text-[#00d09c]" />
+            <span>Company & Venture Portal</span>
+            <ExternalLink className="h-3 w-3 text-slate-400" />
+          </a>
+
           {/* Auth Actions */}
           <div className="hidden items-center gap-2 sm:flex">
             {isAuthenticated && user ? (
@@ -236,6 +258,21 @@ export const Navbar = React.memo(function Navbar() {
                       <HelpCircle className="h-4 w-4" />
                       Help & Support
                     </Link>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem asChild>
+                    <a
+                      href="http://localhost:7001"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between text-emerald-600 focus:text-emerald-700 dark:text-[#00d09c] font-semibold cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4" />
+                        <span>Company Portal (Issuers)</span>
+                      </div>
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
                   </DropdownMenuItem>
 
                   <DropdownMenuSeparator className="bg-slate-100 dark:bg-slate-800" />

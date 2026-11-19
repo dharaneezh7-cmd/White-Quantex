@@ -1,4 +1,5 @@
 import { springApi } from "@/services/api/client"
+import { recentVisitsService } from "./recentVisitsService"
 import { ApiResponse, PagedResponse } from "@/types"
 import {
   type VentureOpportunity,
@@ -521,12 +522,18 @@ export const exploreService = {
     throw new Error(`Mutual Scheme not found: ${identifier}`)
   },
 
-  async recordRecentlyViewed(tickerOrId: string): Promise<void> {
-    try {
-      await springApi.post(`/explore/recently-viewed/${encodeURIComponent(tickerOrId)}`)
-    } catch {
-      // Non-blocking telemetry
-    }
+  async recordRecentlyViewed(tickerOrId: string, companyData?: Partial<CompanySummary>): Promise<void> {
+    // Saved in user's system only to reduce server load
+    recentVisitsService.recordVisit({
+      id: tickerOrId,
+      ticker: tickerOrId,
+      name: companyData?.name || tickerOrId,
+      shortName: companyData?.shortName || tickerOrId,
+      sector: companyData?.sector,
+      valuation: companyData?.valuation,
+      logoColor: companyData?.logoColor,
+      type: "company",
+    })
   },
 
   async getVentureOpportunities(): Promise<VentureOpportunity[]> {

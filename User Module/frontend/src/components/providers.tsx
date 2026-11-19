@@ -6,6 +6,12 @@ import { Navbar } from "./layout/Navbar"
 import { Footer } from "./layout/Footer"
 import { BottomNavigation } from "./layout/BottomNavigation"
 import { PageProgressBar, PageTransitionWrapper } from "./common/PageLoader"
+import { useActivityTracker } from "../hooks/useActivityTracker"
+
+function ActivityTrackerListener() {
+  useActivityTracker()
+  return null
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -13,6 +19,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <ThemeProvider>
         <div className="flex min-h-dvh flex-col bg-[var(--wq-bg)] text-[var(--wq-fg)]">
           <PageProgressBar />
+          <ActivityTrackerListener />
           <Navbar />
           <main className="w-full flex-1 pt-16 pb-16 md:pb-0 flex flex-col">
             <PageTransitionWrapper>{children}</PageTransitionWrapper>

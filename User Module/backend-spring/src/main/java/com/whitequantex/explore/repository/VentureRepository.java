@@ -16,6 +16,7 @@ import java.util.UUID;
 @Repository
 public interface VentureRepository extends JpaRepository<VentureEntity, UUID> {
     Optional<VentureEntity> findByTickerIgnoreCase(String ticker);
+    Optional<VentureEntity> findByNameIgnoreCase(String name);
     Optional<VentureEntity> findByCikIgnoreCase(String cik);
 
     List<VentureEntity> findByIsActiveTrueOrderByCreatedAtDesc();

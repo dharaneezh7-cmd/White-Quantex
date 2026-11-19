@@ -18,7 +18,6 @@ import java.util.Map;
 @RequestMapping({"/api/market", "/api/explore/market"})
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = "*")
 public class MarketController {
 
     private final MarketPriceService marketPriceService;

@@ -65,9 +65,14 @@ export const Navbar = React.memo(function Navbar() {
             <div className="flex h-8 w-8 items-center justify-center rounded-none bg-slate-900 text-white dark:bg-white dark:text-zinc-950 font-black shadow-sm">
               <span className="text-xs">WQ</span>
             </div>
-            <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
-              White <span style={{ color: "#00cf9b" }}>Quantex</span>
-            </span>
+            <div className="flex flex-col">
+              <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white leading-none">
+                White <span style={{ color: "#00cf9b" }}>Quantex</span>
+              </span>
+              <span className="text-[9px] font-black uppercase tracking-wider text-[#00a87e] dark:text-[#00d09c] leading-none mt-1">
+                Company & Venture Portal
+              </span>
+            </div>
           </Link>
 
           <div className="hidden items-center gap-1 md:flex">

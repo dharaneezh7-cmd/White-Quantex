@@ -8,6 +8,7 @@ import { Badge } from "../../components/ui/badge"
 import { Card, CardContent } from "../../components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar"
 import { VerificationBadge } from "../../components/shared/VerificationBadge"
+import { recentVisitsService } from "../../services/explore/recentVisitsService"
 
 const SAMPLE_POSTS = [
   {
@@ -277,7 +278,18 @@ export default function SearchPage() {
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Company</span>
                   <Button
                     size="sm"
-                    onClick={() => navigate(`/companies/${venture.id}`)}
+                    onClick={() => {
+                      recentVisitsService.recordVisit({
+                        id: venture.id,
+                        ticker: venture.name.replace(/\s+/g, "").toUpperCase().slice(0, 5),
+                        name: venture.name,
+                        shortName: venture.name,
+                        sector: venture.sector,
+                        valuation: venture.target,
+                        type: "venture",
+                      })
+                      navigate(`/companies/${venture.id}`)
+                    }}
                     className="h-7 px-3 text-[11px] font-bold bg-slate-900 hover:bg-black text-white dark:bg-white dark:text-zinc-950 rounded-lg cursor-pointer"
                   >
                     View Deal

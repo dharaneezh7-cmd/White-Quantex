@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react"
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute"
 import { useAuthStore } from "@/stores/auth-store"
 import { nodeApi } from "@/services/api/client"
+import { authService } from "@/services/auth/authService"
 import { communityService } from "@/services/community/communityService"
 import { exploreService } from "@/services/explore/exploreService"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -25,6 +26,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import toast from "react-hot-toast"
 import ViewProfilePage from "./view/page"
+import { UserSessionManager } from "@/components/auth/UserSessionManager"
 
 export default function UnifiedProfilePage() {
   const { user, updateUser } = useAuthStore()
@@ -36,6 +38,20 @@ export default function UnifiedProfilePage() {
   if (target && target !== user?.username && target !== user?.id) {
     return <ViewProfilePage />
   }
+
+  // Fetch latest authoritative profile from Spring Boot PostgreSQL database
+  const { data: dbUser } = useQuery({
+    queryKey: ["auth-me-profile"],
+    queryFn: () => authService.getCurrentUser(),
+    staleTime: 30_000,
+    retry: false,
+  })
+
+  useEffect(() => {
+    if (dbUser) {
+      updateUser(dbUser)
+    }
+  }, [dbUser])
 
   // Profile data with realistic fallbacks matching user's account session
   const displayName = user?.displayName || (user?.firstName ? `${user.firstName} ${user.lastName || ""}`.trim() : "Dharaneesh Viswanathan")
@@ -112,6 +128,8 @@ export default function UnifiedProfilePage() {
     setIsSaving(true)
 
     const updatedData = {
+      id: user?.id,
+      wqUserId: user?.id || (wqUserId !== "wq uuid canonical reference" ? wqUserId : undefined),
       displayName: editForm.displayName.trim(),
       username: editForm.username.trim(),
       headline: editForm.headline.trim(),
@@ -125,26 +143,36 @@ export default function UnifiedProfilePage() {
     }
 
     try {
-      // 1. Immediately persist to client Zustand store & localStorage
-      updateUser(updatedData)
+      // 1. Persist to Spring Boot PostgreSQL database (Authoritative Source of Truth)
+      let savedUser: any = null
+      try {
+        savedUser = await authService.updateProfile(updatedData)
+      } catch (springErr: any) {
+        console.error("Spring PostgreSQL profile update error:", springErr)
+        throw new Error(springErr?.response?.data?.message || "Failed to update profile in PostgreSQL database")
+      }
 
-      // 2. Persist to Node.js MongoDB backend
+      // 2. Persist to Node.js MongoDB backend (Community Member & Post Directory)
       try {
         await nodeApi.put("/members/profile", {
           ...updatedData,
-          wqUserId,
+          wqUserId: savedUser?.id || user?.id || wqUserId,
         })
-      } catch (apiErr) {
-        console.warn("Backend profile sync notice:", apiErr)
+      } catch (nodeErr) {
+        console.warn("Node member directory sync notice:", nodeErr)
       }
 
+      // 3. Immediately persist verified record to client Zustand store & localStorage
+      updateUser(savedUser ? { ...updatedData, ...savedUser } : updatedData)
+
       // Invalidate relevant queries so new profile name and dispatches update immediately across the app
+      queryClient.invalidateQueries({ queryKey: ["auth-me-profile"] })
       queryClient.invalidateQueries({ queryKey: ["user-profile-posts"] })
       queryClient.invalidateQueries({ queryKey: ["community-posts"] })
       queryClient.invalidateQueries({ queryKey: ["community-members"] })
 
       setIsEditDialogOpen(false)
-      toast.success("Profile saved successfully!")
+      toast.success("Profile saved successfully to database!")
     } catch (err: any) {
       toast.error(err?.message || "Failed to save profile")
     } finally {
@@ -765,7 +793,9 @@ export default function UnifiedProfilePage() {
             </TabsContent>
 
             {/* TAB 5: ACCOUNT & SECURITY */}
-            <TabsContent value="security" className="space-y-4 pt-4 focus-visible:outline-none">
+            <TabsContent value="security" className="space-y-6 pt-4 focus-visible:outline-none">
+              <UserSessionManager />
+              <div className="pt-4 border-t border-slate-200 dark:border-zinc-800" />
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">

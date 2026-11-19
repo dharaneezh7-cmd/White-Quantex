@@ -121,10 +121,10 @@ export default function SignUpPage() {
             </span>
           </Link>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight pt-2">
-            Create Your Account
+            Corporate & Founder Registration
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Create your account with your email to register and manage your company or venture.
+            Create an authorized representative account to register and manage your company or startup venture.
           </p>
         </div>
 
@@ -313,12 +313,18 @@ export default function SignUpPage() {
         </form>
 
         {/* Sign In link */}
-        <div className="pt-4 border-t border-slate-200 dark:border-zinc-800 text-center">
+        <div className="pt-4 border-t border-slate-200 dark:border-zinc-800 text-center space-y-2">
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Already have an account?{" "}
+            Already registered as an issuer?{" "}
             <Link to="/login" className="font-bold text-[#00d09c] hover:underline">
               Sign In
             </Link>
+          </p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            Individual user or retail investor?{" "}
+            <a href="http://localhost:7000/register" className="font-bold text-slate-600 dark:text-zinc-300 hover:text-[#00d09c] underline">
+              Create account on User Portal
+            </a>
           </p>
         </div>
 

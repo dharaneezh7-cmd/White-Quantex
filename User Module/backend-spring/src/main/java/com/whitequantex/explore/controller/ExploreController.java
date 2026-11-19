@@ -21,6 +21,14 @@ public class ExploreController {
     private final com.whitequantex.users.repository.UserRepository userRepository;
 
     private UUID resolveUserId(String header) {
+        // Priority 1: Verified cryptographic principal from SecurityContext (OWASP IDOR defense)
+        org.springframework.security.core.Authentication auth = 
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof UUID principalId) {
+            return principalId;
+        }
+
+        // Priority 2: Fallback to header for unauthenticated public preview or backward-compatible API clients
         if (header == null || header.isBlank()) {
             return null;
         }
@@ -127,11 +135,8 @@ public class ExploreController {
             @PathVariable String identifier,
             @RequestHeader(value = "X-WQ-User-Id", required = false) String userIdHeader
     ) {
-        UUID userId = resolveUserId(userIdHeader);
-        if (userId != null) {
-            exploreService.recordRecentlyViewed(userId, identifier);
-        }
-        return ResponseEntity.ok(ApiResponse.success(null, "View recorded"));
+        // Saved in user's system only to reduce server load
+        return ResponseEntity.ok(ApiResponse.success(null, "View recorded in user system"));
     }
 
     @GetMapping("/news")

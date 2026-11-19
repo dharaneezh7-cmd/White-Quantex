@@ -1,6 +1,7 @@
 import { Router } from "express"
 import { Community } from "../models/Community.mjs"
 import { authMiddleware, requireAuth } from "../middleware/auth.mjs"
+import { sanitizeHtml } from "../utils/security.mjs"
 
 const router = Router()
 
@@ -104,9 +105,9 @@ router.post("/", requireAuth, async (req, res) => {
     }
 
     const comm = new Community({
-      name: name.trim(),
+      name: sanitizeHtml(name.trim()),
       slug,
-      description: description?.trim() || "An official White Quantex community hub.",
+      description: sanitizeHtml(description?.trim() || "An official White Quantex community hub."),
       coverImageUrl: coverImageUrl || "",
       iconUrl: iconUrl || "",
       memberCount: 1,

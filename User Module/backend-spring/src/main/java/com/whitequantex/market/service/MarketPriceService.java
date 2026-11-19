@@ -69,10 +69,17 @@ public class MarketPriceService {
             UUID id, String ticker, String name, String shortName, String sector,
             String logoColor, String valuation, BigDecimal valuationNum, String exchangeTier, boolean isVenture
     ) {
-        int hash = (ticker + (name != null ? name : "WQ")).chars().reduce(0, Integer::sum);
-        double base = ((hash % 450) + 18) + ((hash % 99) / 100.0);
+        String cleanSymbol = ticker != null ? ticker.toUpperCase().trim() : "WQ";
+        int hash = cleanSymbol.chars().reduce(0, Integer::sum);
+        BigDecimal basePrice;
+        if (valuationNum != null && valuationNum.compareTo(BigDecimal.ZERO) > 0) {
+            double sharePrice = Math.max(10.0, Math.min(1500.0, valuationNum.doubleValue() / 2_500_000.0));
+            basePrice = BigDecimal.valueOf(sharePrice).setScale(2, RoundingMode.HALF_UP);
+        } else {
+            double base = ((hash % 450) + 18) + ((hash % 99) / 100.0);
+            basePrice = BigDecimal.valueOf(base).setScale(2, RoundingMode.HALF_UP);
+        }
         double changePercent = ((hash % 1500) - 650) / 100.0;
-        BigDecimal basePrice = BigDecimal.valueOf(base).setScale(2, RoundingMode.HALF_UP);
         BigDecimal changePct = BigDecimal.valueOf(changePercent).setScale(2, RoundingMode.HALF_UP);
         BigDecimal changeAmt = basePrice.multiply(changePct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         BigDecimal openPrice = basePrice.subtract(changeAmt).setScale(2, RoundingMode.HALF_UP);
@@ -275,14 +282,8 @@ public class MarketPriceService {
         emitters.add(emitter);
 
         emitter.onCompletion(() -> emitters.remove(emitter));
-        emitter.onTimeout(() -> {
-            emitter.complete();
-            emitters.remove(emitter);
-        });
-        emitter.onError(e -> {
-            emitter.complete();
-            emitters.remove(emitter);
-        });
+        emitter.onTimeout(() -> emitters.remove(emitter));
+        emitter.onError(e -> emitters.remove(emitter));
 
         // Send initial heartbeat & full snapshot on connection
         try {
@@ -305,8 +306,11 @@ public class MarketPriceService {
         for (SseEmitter emitter : emitters) {
             try {
                 emitter.send(SseEmitter.event().name("market-tick").data(event));
-            } catch (Exception e) {
+            } catch (Throwable t) {
                 deadEmitters.add(emitter);
+                try {
+                    emitter.complete();
+                } catch (Throwable ignored) {}
             }
         }
         if (!deadEmitters.isEmpty()) {
@@ -339,5 +343,266 @@ public class MarketPriceService {
         if (ticker == null) return null;
         if (quotes.isEmpty()) seedInitialQuotes();
         return quotes.get(ticker.toUpperCase());
+    }
+
+    public synchronized LiveStockQuoteDto applyTradeImpact(String ticker, long sharesPurchased, BigDecimal totalAmountInvested) {
+        if (ticker == null) return null;
+        String symbol = ticker.toUpperCase();
+        LiveStockQuoteDto old = quotes.get(symbol);
+        if (old == null) {
+            seedInitialQuotes();
+            old = quotes.get(symbol);
+            if (old == null) return null;
+        }
+
+        // Demand-driven price impact: proportional to shares bought and investment volume
+        double baseImpactPct = Math.min(12.0, Math.max(0.75, (sharesPurchased / 500.0) * 0.45 + (totalAmountInvested.doubleValue() / 50000.0) * 0.65));
+        BigDecimal impactFactor = BigDecimal.valueOf(1.0 + baseImpactPct / 100.0);
+        BigDecimal oldPrice = old.getPrice();
+        BigDecimal newPrice = oldPrice.multiply(impactFactor).setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal open = old.getOpenPrice() != null ? old.getOpenPrice() : oldPrice;
+        BigDecimal newChangeAmt = newPrice.subtract(open).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal newChangePct = BigDecimal.ZERO;
+        if (open.compareTo(BigDecimal.ZERO) > 0) {
+            newChangePct = newChangeAmt.multiply(BigDecimal.valueOf(100)).divide(open, 2, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal newHigh = old.getHigh24h() != null ? old.getHigh24h().max(newPrice) : newPrice;
+        BigDecimal newLow = old.getLow24h() != null ? old.getLow24h().min(newPrice) : newPrice;
+        long newVolume = (old.getVolumeShares() != null ? old.getVolumeShares() : 0L) + sharesPurchased;
+
+        // Increase valuation / market cap
+        BigDecimal oldValNum = old.getValuationNum() != null ? old.getValuationNum() : BigDecimal.valueOf(50000000);
+        BigDecimal newValNum = oldValNum.add(totalAmountInvested).setScale(2, RoundingMode.HALF_UP);
+        String newValuation = "$" + String.format("%.1fM", newValNum.doubleValue() / 1_000_000.0);
+
+        LiveStockQuoteDto updated = LiveStockQuoteDto.builder()
+                .id(old.getId())
+                .ticker(old.getTicker())
+                .name(old.getName())
+                .shortName(old.getShortName())
+                .sector(old.getSector())
+                .logoColor(old.getLogoColor())
+                .price(newPrice)
+                .priceStr(priceFormatter.format(newPrice))
+                .changePercent(newChangePct)
+                .changePercentStr("+" + newChangePct.toPlainString() + "%")
+                .changeAmount(newChangeAmt)
+                .changeAmountStr("+" + newChangeAmt.toPlainString())
+                .isPositive(true)
+                .direction("UP")
+                .openPrice(open)
+                .high24h(newHigh)
+                .low24h(newLow)
+                .high52w(old.getHigh52w() != null ? old.getHigh52w().max(newPrice) : newPrice)
+                .low52w(old.getLow52w())
+                .volumeShares(newVolume)
+                .volumeStr(volumeFormatter.format(newVolume))
+                .valuation(newValuation)
+                .valuationNum(newValNum)
+                .exchangeTier(old.getExchangeTier())
+                .isVenture(old.getIsVenture())
+                .lastUpdated(Instant.now())
+                .build();
+
+        quotes.put(symbol, updated);
+
+        // Update company entity valuation in DB if company exists
+        companyRepository.findByTickerIgnoreCase(symbol).ifPresent(c -> {
+            c.setValuation(newValuation);
+            c.setValuationNum(newValNum);
+            companyRepository.save(c);
+        });
+
+        ventureRepository.findByTickerIgnoreCase(symbol).ifPresent(v -> {
+            v.setValuation(newValuation);
+            v.setValuationNum(newValNum);
+            v.setRaisedAmountNum(v.getRaisedAmountNum().add(totalAmountInvested));
+            v.setRaisedAmount("$" + String.format("%.1fM", v.getRaisedAmountNum().doubleValue() / 1_000_000.0));
+            ventureRepository.save(v);
+        });
+
+        // Persist into PostgreSQL
+        try {
+            priceIngestionService.ingestPriceUpdate(updated, "TRADE_ORDER_EXECUTION", "ORDER-" + System.currentTimeMillis() + "-" + symbol);
+        } catch (Exception e) {
+            log.error("Failed to persist trade price impact for ticker: {}", symbol, e);
+        }
+
+        // Broadcast to all active browsers immediately
+        MarketUpdateEventDto event = MarketUpdateEventDto.builder()
+                .type("TRADE_PRICE_SURGE")
+                .timestamp(Instant.now())
+                .tickNumber(tickCounter.incrementAndGet())
+                .quotes(Map.of(symbol, updated))
+                .indices(computeIndices(tickCounter.get()))
+                .build();
+        broadcastToEmitters(event);
+
+        return updated;
+    }
+
+    public synchronized LiveStockQuoteDto applyQuarterlyFinancialsUpdate(
+            String ticker,
+            BigDecimal newQuarterRevenue,
+            BigDecimal newQuarterProfit,
+            String quarter,
+            String milestones
+    ) {
+        if (ticker == null) return null;
+        String symbol = ticker.toUpperCase();
+        LiveStockQuoteDto old = quotes.get(symbol);
+        if (old == null) {
+            seedInitialQuotes();
+            old = quotes.get(symbol);
+            if (old == null) return null;
+        }
+
+        // Annualized Revenue = Q * 4
+        BigDecimal annualizedRev = newQuarterRevenue.multiply(BigDecimal.valueOf(4));
+        BigDecimal profitMargin = newQuarterRevenue.compareTo(BigDecimal.ZERO) > 0
+                ? newQuarterProfit.divide(newQuarterRevenue, 4, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+
+        // Enterprise Multiple based valuation boost
+        BigDecimal revMultiple = BigDecimal.valueOf(4.2);
+        BigDecimal profitMultiple = BigDecimal.valueOf(10.0);
+        BigDecimal newValNum = annualizedRev.multiply(revMultiple);
+        if (newQuarterProfit.compareTo(BigDecimal.ZERO) > 0) {
+            newValNum = newValNum.add(newQuarterProfit.multiply(BigDecimal.valueOf(4)).multiply(profitMultiple));
+        }
+        newValNum = newValNum.max(old.getValuationNum() != null ? old.getValuationNum().multiply(BigDecimal.valueOf(1.05)) : BigDecimal.valueOf(60000000));
+        newValNum = newValNum.setScale(2, RoundingMode.HALF_UP);
+        String newValuation = "$" + String.format("%.1fM", newValNum.doubleValue() / 1_000_000.0);
+
+        // Share price increases based on revenue & profit performance
+        double growthFactor = Math.min(1.30, Math.max(1.04, 1.0 + (profitMargin.doubleValue() * 0.5) + 0.04));
+        BigDecimal newPrice = old.getPrice().multiply(BigDecimal.valueOf(growthFactor)).setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal open = old.getOpenPrice() != null ? old.getOpenPrice() : old.getPrice();
+        BigDecimal newChangeAmt = newPrice.subtract(open).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal newChangePct = BigDecimal.ZERO;
+        if (open.compareTo(BigDecimal.ZERO) > 0) {
+            newChangePct = newChangeAmt.multiply(BigDecimal.valueOf(100)).divide(open, 2, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal newHigh = old.getHigh24h() != null ? old.getHigh24h().max(newPrice) : newPrice;
+        long addedVol = 45000L;
+        long newVolume = (old.getVolumeShares() != null ? old.getVolumeShares() : 0L) + addedVol;
+
+        LiveStockQuoteDto updated = LiveStockQuoteDto.builder()
+                .id(old.getId())
+                .ticker(old.getTicker())
+                .name(old.getName())
+                .shortName(old.getShortName())
+                .sector(old.getSector())
+                .logoColor(old.getLogoColor())
+                .price(newPrice)
+                .priceStr(priceFormatter.format(newPrice))
+                .changePercent(newChangePct)
+                .changePercentStr("+" + newChangePct.toPlainString() + "%")
+                .changeAmount(newChangeAmt)
+                .changeAmountStr("+" + newChangeAmt.toPlainString())
+                .isPositive(true)
+                .direction("UP")
+                .openPrice(open)
+                .high24h(newHigh)
+                .low24h(old.getLow24h())
+                .high52w(old.getHigh52w() != null ? old.getHigh52w().max(newPrice) : newPrice)
+                .low52w(old.getLow52w())
+                .volumeShares(newVolume)
+                .volumeStr(volumeFormatter.format(newVolume))
+                .valuation(newValuation)
+                .valuationNum(newValNum)
+                .exchangeTier(old.getExchangeTier())
+                .isVenture(old.getIsVenture())
+                .lastUpdated(Instant.now())
+                .build();
+
+        quotes.put(symbol, updated);
+
+        final BigDecimal finalValNum = newValNum;
+        final String finalValuation = newValuation;
+        // Update company in DB
+        companyRepository.findByTickerIgnoreCase(symbol).ifPresent(c -> {
+            c.setValuation(finalValuation);
+            c.setValuationNum(finalValNum);
+            c.setQuarterlyRevenue(newQuarterRevenue);
+            c.setQuarterlyProfit(newQuarterProfit);
+            c.setAnnualRevenue("$" + String.format("%.1fM ARR", annualizedRev.doubleValue() / 1_000_000.0));
+            c.setAnnualRevenueNum(annualizedRev);
+            c.setLastFinancialUpdate(Instant.now());
+            companyRepository.save(c);
+        });
+
+        // Ingest to DB
+        try {
+            priceIngestionService.ingestPriceUpdate(updated, "QUARTERLY_EARNINGS_REVISION", "EARNINGS-" + quarter.replace(" ", "_") + "-" + symbol);
+        } catch (Exception e) {
+            log.error("Failed to persist earnings price update for ticker: {}", symbol, e);
+        }
+
+        // Broadcast
+        MarketUpdateEventDto event = MarketUpdateEventDto.builder()
+                .type("EARNINGS_ANNOUNCEMENT_PRICE_SURGE")
+                .timestamp(Instant.now())
+                .tickNumber(tickCounter.incrementAndGet())
+                .quotes(Map.of(symbol, updated))
+                .indices(computeIndices(tickCounter.get()))
+                .build();
+        broadcastToEmitters(event);
+
+        return updated;
+    }
+
+    public synchronized LiveStockQuoteDto registerNewQuote(
+            UUID id, String ticker, String name, String shortName, String sector,
+            String logoColor, String valuation, BigDecimal valuationNum, String exchangeTier, boolean isVenture, BigDecimal initialPrice
+    ) {
+        if (ticker == null) return null;
+        String symbol = ticker.toUpperCase();
+        BigDecimal price = (initialPrice != null && initialPrice.compareTo(BigDecimal.ZERO) > 0)
+                ? initialPrice.setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.valueOf(35.00);
+
+        LiveStockQuoteDto newQuote = LiveStockQuoteDto.builder()
+                .id(id)
+                .ticker(symbol)
+                .name(name)
+                .shortName(shortName != null ? shortName : name)
+                .sector(sector != null ? sector : "Enterprise Technology")
+                .logoColor(logoColor != null ? logoColor : "bg-emerald-600")
+                .price(price)
+                .priceStr(priceFormatter.format(price))
+                .changePercent(BigDecimal.valueOf(4.50))
+                .changePercentStr("+4.50%")
+                .changeAmount(price.multiply(BigDecimal.valueOf(0.045)).setScale(2, RoundingMode.HALF_UP))
+                .changeAmountStr("+" + price.multiply(BigDecimal.valueOf(0.045)).setScale(2, RoundingMode.HALF_UP).toPlainString())
+                .isPositive(true)
+                .direction("UP")
+                .openPrice(price.multiply(BigDecimal.valueOf(0.955)).setScale(2, RoundingMode.HALF_UP))
+                .high24h(price.multiply(BigDecimal.valueOf(1.06)).setScale(2, RoundingMode.HALF_UP))
+                .low24h(price.multiply(BigDecimal.valueOf(0.94)).setScale(2, RoundingMode.HALF_UP))
+                .high52w(price.multiply(BigDecimal.valueOf(1.30)).setScale(2, RoundingMode.HALF_UP))
+                .low52w(price.multiply(BigDecimal.valueOf(0.80)).setScale(2, RoundingMode.HALF_UP))
+                .volumeShares(25000L)
+                .volumeStr(volumeFormatter.format(25000L))
+                .valuation(valuation != null ? valuation : "$50.0M")
+                .valuationNum(valuationNum != null ? valuationNum : BigDecimal.valueOf(50000000))
+                .exchangeTier(exchangeTier != null ? exchangeTier : "Tier-1 Institutional")
+                .isVenture(isVenture)
+                .lastUpdated(Instant.now())
+                .build();
+
+        quotes.put(symbol, newQuote);
+
+        try {
+            priceIngestionService.ingestPriceUpdate(newQuote, "INITIAL_REGISTRATION_LISTING", "LISTING-" + symbol);
+        } catch (Exception e) {
+            log.error("Failed to ingest initial price for new issuer: {}", symbol, e);
+        }
+
+        return newQuote;
     }
 }

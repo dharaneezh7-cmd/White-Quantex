@@ -96,6 +96,16 @@ public class CompanyEntity {
     @Builder.Default
     private Boolean isActive = true;
 
+    @Column(precision = 18, scale = 2)
+    @Builder.Default
+    private BigDecimal quarterlyRevenue = BigDecimal.ZERO;
+
+    @Column(precision = 18, scale = 2)
+    @Builder.Default
+    private BigDecimal quarterlyProfit = BigDecimal.ZERO;
+
+    private Instant lastFinancialUpdate;
+
     @Builder.Default
     private Instant createdAt = Instant.now();
 

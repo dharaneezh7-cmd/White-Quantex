@@ -1,5 +1,5 @@
 import React, { useState } from "react"
-import { Link, useNavigate } from "react-router"
+import { Link, useNavigate, Navigate } from "react-router"
 import { Sparkles, ArrowRight, Lock, Mail, Eye, EyeOff } from "lucide-react"
 import { authService } from "@/services/auth/authService"
 import { useAuthStore } from "@/stores/auth-store"
@@ -10,8 +10,13 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const setUser = useAuthStore((s) => s.setUser)
+  const { user, isAuthenticated, setUser, setCurrentSession } = useAuthStore()
   const navigate = useNavigate()
+
+  // If already authenticated with active session, redirect directly to holdings
+  if (isAuthenticated && user) {
+    return <Navigate to="/holdings" replace />
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -20,7 +25,9 @@ export default function LoginPage() {
     try {
       const user = await authService.login({ email, password })
       setUser(user)
-      navigate("/dashboard")
+      const session = await authService.getCurrentSession()
+      if (session) setCurrentSession(session)
+      navigate("/holdings")
     } catch (err: any) {
       setError(err.response?.data?.message || "Invalid credentials or session expired.")
     } finally {
@@ -132,7 +139,9 @@ export default function LoginPage() {
               try {
                 const user = await authService.demoLogin()
                 setUser(user)
-                navigate("/dashboard")
+                const session = await authService.getCurrentSession()
+                if (session) setCurrentSession(session)
+                navigate("/holdings")
               } catch (err: any) {
                 setError(err.response?.data?.message || "Demo session initialization error.")
               } finally {

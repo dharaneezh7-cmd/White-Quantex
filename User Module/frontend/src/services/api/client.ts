@@ -74,6 +74,14 @@ springApi.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       // Session expired or unauthorized
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("wq_logged_out", "true")
+          localStorage.removeItem("wq_user_session")
+          localStorage.removeItem("wq_user_profile")
+          localStorage.removeItem("wq_active_session")
+        } catch {}
+      }
     }
     return Promise.reject(error)
   }
@@ -84,6 +92,14 @@ nodeApi.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       // Session expired or unauthorized
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("wq_logged_out", "true")
+          localStorage.removeItem("wq_user_session")
+          localStorage.removeItem("wq_user_profile")
+          localStorage.removeItem("wq_active_session")
+        } catch {}
+      }
     }
     return Promise.reject(error)
   }

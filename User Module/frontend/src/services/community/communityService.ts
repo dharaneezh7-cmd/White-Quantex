@@ -1,4 +1,5 @@
 import { nodeApi } from "@/services/api/client"
+import { useAuthStore } from "@/stores/auth-store"
 import { Post, Comment, Community, ApiResponse, PagedResponse } from "@/types"
 
 export interface CommunityMember {
@@ -89,6 +90,12 @@ export const communityService = {
       communityId?: string
     }
   ): Promise<void> {
+    const { isAuthenticated, user } = useAuthStore.getState()
+    if (!isAuthenticated || !user) {
+      // If user is not logged in, do not track user activity
+      return
+    }
+
     try {
       await nodeApi.post(`/posts/${postId}/activity`, data)
     } catch {
@@ -109,6 +116,12 @@ export const communityService = {
       communityId?: string
     }>
   ): Promise<void> {
+    const { isAuthenticated, user } = useAuthStore.getState()
+    if (!isAuthenticated || !user) {
+      // If user is not logged in, do not track user activity
+      return
+    }
+
     try {
       await nodeApi.post("/posts/activity/batch", { activities })
     } catch {

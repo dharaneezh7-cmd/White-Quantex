@@ -1,8 +1,9 @@
 export const NAV_LINKS = [
   { label: "Home", href: "/" },
-  { label: "About", href: "/about" },
   { label: "Hub", href: "/register" },
+  { label: "Quarterly Financials", href: "/financials" },
   { label: "Post Update", href: "/post" },
+  { label: "About", href: "/about" },
 ]
 
 export const FOOTER_LINKS = [

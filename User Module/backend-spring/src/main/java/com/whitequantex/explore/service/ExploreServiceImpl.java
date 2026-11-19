@@ -7,6 +7,7 @@ import com.whitequantex.explore.repository.*;
 import com.whitequantex.market.dto.LiveStockQuoteDto;
 import com.whitequantex.market.service.MarketPriceService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -22,6 +23,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 public class ExploreServiceImpl implements ExploreService {
 
@@ -414,38 +416,7 @@ public class ExploreServiceImpl implements ExploreService {
     @Override
     @Transactional
     public void recordRecentlyViewed(UUID userId, String tickerOrId) {
-        if (userId == null || tickerOrId == null || tickerOrId.isBlank()) {
-            return;
-        }
-
-        CompanyEntity company = companyRepository.findByTickerIgnoreCase(tickerOrId.trim())
-                .orElseGet(() -> {
-                    try {
-                        return companyRepository.findById(UUID.fromString(tickerOrId.trim())).orElse(null);
-                    } catch (Exception e) {
-                        return null;
-                    }
-                });
-
-        if (company == null) {
-            return;
-        }
-
-        UserRecentlyViewedEntity existing = userRecentlyViewedRepository.findByUserIdAndCompanyId(userId, company.getId())
-                .orElse(null);
-
-        if (existing != null) {
-            existing.setViewedAt(java.time.Instant.now());
-            userRecentlyViewedRepository.save(existing);
-        } else {
-            UserRecentlyViewedEntity newView = UserRecentlyViewedEntity.builder()
-                    .id(UUID.randomUUID())
-                    .userId(userId)
-                    .company(company)
-                    .viewedAt(java.time.Instant.now())
-                    .build();
-            userRecentlyViewedRepository.save(newView);
-        }
+        // Saved in user's system only (client-side storage) to reduce load in the server.
     }
 
     @Override
@@ -1060,6 +1031,15 @@ public class ExploreServiceImpl implements ExploreService {
             position.setUpdatedAt(java.time.Instant.now());
         }
         positionRepository.save(position);
+
+        // Dynamically increase share price and market cap upon share purchase
+        if (company.getTicker() != null) {
+            try {
+                marketPriceService.applyTradeImpact(company.getTicker(), shares, amount);
+            } catch (Exception e) {
+                log.warn("Failed to apply market price impact for trade on {}: {}", company.getTicker(), e.getMessage());
+            }
+        }
 
         return CorporateOrderDto.builder()
                 .id(order.getId())

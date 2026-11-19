@@ -33,14 +33,22 @@ public class UserEntity {
     private String username;
 
     private String displayName;
+    @Column(columnDefinition = "TEXT")
     private String headline;
+    @Column(columnDefinition = "TEXT")
     private String bio;
+    @Column(columnDefinition = "TEXT")
     private String avatarUrl;
+    @Column(columnDefinition = "TEXT")
     private String coverImageUrl;
     private String location;
+    @Column(columnDefinition = "TEXT")
     private String website;
+    @Column(columnDefinition = "TEXT")
     private String linkedinUrl;
+    @Column(columnDefinition = "TEXT")
     private String twitterUrl;
+    @Column(columnDefinition = "TEXT")
     private String githubUrl;
     private String phone;
     private String country;

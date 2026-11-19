@@ -22,6 +22,13 @@ public class InvestmentController {
     private final UserRepository userRepository;
 
     private UUID resolveUserId(String header) {
+        // Priority 1: Verified cryptographic principal from SecurityContext (OWASP IDOR defense)
+        org.springframework.security.core.Authentication auth = 
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof UUID principalId) {
+            return principalId;
+        }
+
         if (header == null || header.isBlank()) {
             return null;
         }

@@ -74,4 +74,33 @@ export const companyService = {
     const res = await springApi.get(`/companies/check-name?name=${encodeURIComponent(name)}`)
     return res.data
   },
+
+  async submitQuarterlyFinancials(tickerOrId: string, data: {
+    quarter: string
+    fiscalYear: number
+    quarterNumber: number
+    revenue: number
+    profit: number
+    expenses: number
+    growthRate: number
+    milestones: string
+  }) {
+    const res = await springApi.post(`/companies/${encodeURIComponent(tickerOrId)}/financials`, data)
+    return res.data
+  },
+
+  async getQuarterlyFinancials(tickerOrId: string) {
+    const res = await springApi.get(`/companies/${encodeURIComponent(tickerOrId)}/financials`)
+    return res.data
+  },
+
+  async tradeShares(tickerOrId: string, shares: number, amount: number) {
+    const res = await springApi.post(`/companies/${encodeURIComponent(tickerOrId)}/trade`, { shares, amount })
+    return res.data
+  },
+
+  async getRegisteredCompanies() {
+    const res = await springApi.get("/explore/companies?size=100")
+    return res.data
+  },
 }

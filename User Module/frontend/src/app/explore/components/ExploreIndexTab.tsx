@@ -37,6 +37,9 @@ export interface ExploreIndexTabProps {
   indexSectorList: string[]
   onSelectCompany: (company: any) => void
   entityLabel?: string
+  aggregateValuation?: string
+  legalEntitiesRatio?: string
+  averageTrustScore?: string | number
 }
 
 export function ExploreIndexTab({

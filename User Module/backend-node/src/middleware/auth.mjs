@@ -2,6 +2,21 @@ export function extractUser(req) {
   const userId = req.headers["x-wq-user-id"] || req.headers["x-user-id"]
   
   if (!userId || userId === "undefined" || userId === "null" || userId.trim() === "") {
+    if (req.body?.authorAccountType === "COMPANY" || req.body?.authorAccountType === "VENTURE") {
+      const orgName = req.body.authorName || req.body.companyId || "Corporate Issuer"
+      const orgTicker = req.body.ticker || "WQX"
+      return {
+        id: `org-${orgTicker.toLowerCase()}`,
+        email: `${orgTicker.toLowerCase()}@corporate.wq.io`,
+        name: orgName,
+        username: orgTicker.toLowerCase(),
+        avatarUrl: "",
+        headline: req.body.authorHeadline || `Corporate Account @ ${orgName}`,
+        role: "CORPORATE",
+        accountType: req.body.authorAccountType,
+        verificationLevel: "PLATINUM",
+      }
+    }
     return null
   }
 

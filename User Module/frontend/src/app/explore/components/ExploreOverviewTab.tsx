@@ -24,7 +24,7 @@ import { CategoryExplanationBox } from "./CategoryExplanationBox"
 import { PrivateInvestmentExplainerBanner } from "./PrivateInvestmentExplainerBanner"
 import { getCompanyInvestmentDetails } from "../../../services/explore/exploreService"
 import type { UpcomingCompany, WqRecommendation, MutualScheme } from "../../../services/explore/exploreService"
-import { useMarketPrices } from "../../../services/market/useMarketPrices"
+import { useMarketPrices, marketStore } from "../../../services/market/useMarketPrices"
 
 export interface ExploreOverviewTabProps {
   liveRecentlyViewed: any[]
@@ -136,35 +136,34 @@ export function ExploreOverviewTab({
                   <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">Recently Viewed {currentEntityLabel}</h3>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setSearchParams({ tab: "index" })}
+              <Link
+                to={`${baseRoute}?tab=index`}
                 className="text-[11px] font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer"
               >
                 Master Index ({displayedRecentlyViewed.length}) →
-              </button>
+              </Link>
             </div>
 
             {/* 5-Column on Mobile, 8-Column on Desktop Ticker Layout */}
             {displayedRecentlyViewed.length === 0 ? (
               <div className="py-6 px-4 text-center rounded-xl bg-slate-50 dark:bg-zinc-900/60 border border-dashed border-slate-200 dark:border-zinc-800 my-1">
                 <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">
-                  No recently viewed {entityLower} yet. Browse the Master Index or Sector categories to explore venture dossiers.
+                  No recently viewed {entityLower} yet. Browse the Master Index or Sector categories to explore {entityLower} dossiers.
                 </p>
               </div>
             ) : (
               <div className="grid grid-cols-5 md:grid-cols-8 gap-1.5 sm:gap-2.5 lg:gap-3 py-1">
                 {displayedRecentlyViewed.map((comp, idx) => {
-                  const liveQ = backendQuotes[comp.ticker?.toUpperCase()]
-                  const changeText = liveQ ? liveQ.changePercentStr : comp.change
-                  const isPos = liveQ ? liveQ.isPositive : comp.isPositive
+                  const liveQ = backendQuotes[comp.ticker?.toUpperCase()] || marketStore.getQuote(comp.ticker)
+                  const changeText = liveQ ? liveQ.changePercentStr : (comp.change || "+0.0%")
+                  const isPos = liveQ ? liveQ.isPositive : (comp.isPositive !== false)
 
                   return (
                     <button
                       key={comp.id}
                       type="button"
                       onClick={() => {
-                        const profile = allCompanies.find((c) => c.ticker === comp.ticker) || (allCompanies[0] || null)
+                        const profile = allCompanies.find((c) => (c.ticker || "").toUpperCase() === (comp.ticker || "").toUpperCase()) || comp
                         onSelectCompany(profile)
                       }}
                       className={`flex-col items-center justify-center p-2 rounded-xl hover:bg-slate-100/80 dark:hover:bg-zinc-800/60 border border-transparent hover:border-slate-200/80 dark:hover:border-zinc-700/50 transition-all text-center group cursor-pointer w-full ${

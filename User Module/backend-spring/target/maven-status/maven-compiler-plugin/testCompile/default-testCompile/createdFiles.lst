@@ -1,2 +1,3 @@
+com\whitequantex\auth\UserSessionServiceTest.class
 com\whitequantex\market\HistoricalPriceServiceTest.class
 com\whitequantex\market\PriceIngestionServiceTest.class

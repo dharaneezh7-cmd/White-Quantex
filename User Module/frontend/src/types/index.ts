@@ -594,3 +594,44 @@ export interface SearchFilters {
   page?: number
   size?: number
 }
+
+// ── Session Auth & Activity Tracking ─────────────────────────────────────────
+
+export interface UserSession {
+  id: string
+  userId: string
+  userEmail: string
+  userDisplayName?: string
+  ipAddress: string
+  userAgent: string
+  deviceType: "Desktop" | "Mobile" | "Tablet" | string
+  browser: string
+  operatingSystem: string
+  location: string
+  isActive: boolean
+  isCurrent: boolean
+  loginAt: string
+  lastActivityAt: string
+  expiresAt: string
+  logoutAt?: string
+}
+
+export interface UserActivity {
+  id: string
+  sessionId?: string
+  userId: string
+  activityType: "LOGIN" | "LOGOUT" | "PAGE_VIEW" | "NAVIGATION" | "INTERACTION" | "HEARTBEAT" | string
+  activityName: string
+  path?: string
+  metadata?: string
+  ipAddress?: string
+  createdAt: string
+}
+
+export interface RecordActivityRequest {
+  activityType: string
+  activityName: string
+  path?: string
+  metadata?: string
+}
+

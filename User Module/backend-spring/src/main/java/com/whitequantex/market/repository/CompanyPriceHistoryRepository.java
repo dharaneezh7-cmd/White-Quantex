@@ -24,6 +24,8 @@ public interface CompanyPriceHistoryRepository extends JpaRepository<CompanyPric
 
     long countBySymbolIgnoreCase(String symbol);
 
+    void deleteBySymbolIgnoreCase(String symbol);
+
     @Query("SELECT h FROM CompanyPriceHistoryEntity h WHERE UPPER(h.symbol) = UPPER(:symbol) AND h.priceTimestamp >= :since ORDER BY h.priceTimestamp ASC")
     List<CompanyPriceHistoryEntity> findHistorySince(
             @Param("symbol") String symbol,

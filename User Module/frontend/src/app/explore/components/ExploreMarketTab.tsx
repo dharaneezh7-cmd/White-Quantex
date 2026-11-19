@@ -37,28 +37,47 @@ interface ExploreMarketTabProps {
 }
 
 // ── Sparkline mini SVG chart ───────────────────────────────────────────
-function MiniSparkline({ hash, positive, width = 72, height = 24 }: { hash: number; positive: boolean; width?: number; height?: number }) {
+function MiniSparkline({ hash, positive, width = 120, height = 36 }: { hash: number; positive: boolean; width?: number; height?: number }) {
   const points = useMemo(() => {
     const pts: number[] = []
     let val = 50
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 12; i++) {
       val += ((hash * (i + 5) * 3) % 11) - 5
       pts.push(Math.max(10, Math.min(90, val)))
     }
+    if (positive && pts[pts.length - 1] < pts[0]) {
+      pts[pts.length - 1] = pts[0] + 12
+    } else if (!positive && pts[pts.length - 1] > pts[0]) {
+      pts[pts.length - 1] = Math.max(10, pts[0] - 12)
+    }
     return pts
-  }, [hash])
+  }, [hash, positive])
+
   const min = Math.min(...points)
   const max = Math.max(...points)
   const range = max - min || 1
-  const svgPoints = points.map((p, i) => {
+  const coords = points.map((p, i) => {
     const x = (i / (points.length - 1)) * width
-    const y = height - ((p - min) / range) * (height - 4) - 2
-    return `${x},${y}`
-  }).join(" ")
-  const color = positive ? "#10b981" : "#f43f5e"
+    const y = height - ((p - min) / range) * (height - 8) - 4
+    return { x, y }
+  })
+  const lineD = coords.reduce((acc, pt, i) => {
+    return i === 0 ? `M ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}` : `${acc} L ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`
+  }, "")
+  const fillD = `${lineD} L ${width} ${height} L 0 ${height} Z`
+  const color = positive ? "#00d09c" : "#f43f5e"
+  const gradId = `mspk_${Math.abs(hash)}`
+
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="shrink-0">
-      <polyline points={svgPoints} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.22" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.00" />
+        </linearGradient>
+      </defs>
+      <path d={fillD} fill={`url(#${gradId})`} />
+      <path d={lineD} fill="none" stroke={color} strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   )
 }
@@ -698,66 +717,54 @@ export function ExploreMarketTab({ allCompanies, onOpenDossier, onToast }: Explo
           </table>
         </div>
       ) : (
-        /* SQUARE BOX CARDS GRID VIEW */
+        /* COMPACT CARDS GRID VIEW: Logo, Ticker, Price, and Clean Graph */
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {filteredListings.map((c) => {
             const quote = c.quote
             const isPositive = quote.isPositive
+            const cleanPct = String(quote.changePercent || "0.0").replace(/^[+-]/, "")
             const hash = (c.ticker || c.name || "WQ").split("").reduce((a, x) => a + x.charCodeAt(0), 0)
 
             return (
               <div
                 key={c.id || c.ticker}
                 onClick={() => onOpenDossier && onOpenDossier(c.ticker || c.id)}
-                className="aspect-square flex flex-col justify-between p-3 sm:p-3.5 rounded-2xl border border-slate-200/80 dark:border-zinc-800/80 bg-white dark:bg-zinc-950 hover:border-[#00d09c]/50 hover:shadow-md transition-all cursor-pointer group shadow-xs"
+                className="p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-800/80 bg-white dark:bg-zinc-950 hover:border-[#00d09c]/60 hover:shadow-md transition-all cursor-pointer group shadow-xs flex flex-col justify-between"
               >
-                {/* Top: Logo + Sector */}
-                <div className="flex items-start justify-between">
-                  <div
-                    style={getCompanyLogoStyle(c.logoColor, c.ticker)}
-                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center font-black text-xs text-white shadow-xs shrink-0"
-                  >
-                    {(c.shortName || c.name || "W").slice(0, 2)}
+                {/* Header: Logo + Ticker + Price + % Change */}
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      style={getCompanyLogoStyle(c.logoColor, c.ticker)}
+                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-black text-[11px] sm:text-xs text-white shadow-xs shrink-0"
+                    >
+                      {(c.shortName || c.name || "W").slice(0, 2)}
+                    </div>
+                    <div className="min-w-0">
+                      <span className="font-mono font-black text-xs text-slate-900 dark:text-white group-hover:text-[#00d09c] transition-colors truncate block">
+                        {c.ticker}
+                      </span>
+                      <span className="font-mono font-extrabold text-[11px] text-slate-800 dark:text-zinc-200 block">
+                        ${quote.price}
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 truncate max-w-[70px]">
-                    {c.sector || "Tech"}
+
+                  <span
+                    className={`font-mono text-[10px] sm:text-[11px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                      isPositive
+                        ? "text-emerald-600 dark:text-[#00d09c] bg-emerald-500/10"
+                        : "text-rose-600 dark:text-rose-400 bg-rose-500/10"
+                    }`}
+                  >
+                    {isPositive ? "+" : "-"}
+                    {cleanPct}%
                   </span>
                 </div>
 
-                {/* Middle: Sparkline */}
-                <div className="my-1 flex items-center justify-center">
-                  <MiniSparkline hash={hash} positive={isPositive} width={80} height={26} />
-                </div>
-
-                {/* Bottom: Info + Price + Action */}
-                <div>
-                  <div className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white font-mono group-hover:text-[#00d09c] transition-colors truncate">
-                    {c.ticker}
-                  </div>
-                  <div className="flex items-baseline justify-between mt-0.5">
-                    <span className="font-black font-mono text-xs sm:text-sm text-slate-900 dark:text-white">
-                      ${quote.price}
-                    </span>
-                    <span
-                      className={`font-mono font-bold text-[10px] sm:text-[11px] ${
-                        isPositive ? "text-emerald-500 dark:text-[#00d09c]" : "text-rose-500"
-                      }`}
-                    >
-                      {isPositive ? "+" : "-"}{quote.changePercent}%
-                    </span>
-                  </div>
-                  <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => {
-                        setTradeModalCompany(c)
-                        setOrderSide("BUY")
-                        setLimitPrice(quote.price)
-                      }}
-                      className="w-full py-1 rounded-lg text-[10px] sm:text-xs font-bold bg-[#00d09c] text-zinc-950 hover:bg-[#00b98a] transition-all cursor-pointer shadow-xs"
-                    >
-                      Trade
-                    </button>
-                  </div>
+                {/* Graph: Clean Mini Sparkline */}
+                <div className="mt-2.5 h-10 sm:h-11 w-full flex items-center justify-center">
+                  <MiniSparkline hash={hash} positive={isPositive} width={120} height={36} />
                 </div>
               </div>
             )

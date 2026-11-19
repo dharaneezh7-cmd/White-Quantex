@@ -14,8 +14,11 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MarketUpdateEventDto {
+    private String type;
     private long tick;
+    private long tickNumber;
     private Instant timestamp;
     private List<MarketIndexDto> indices;
     private Map<String, LiveStockQuoteDto> updates;
+    private Map<String, LiveStockQuoteDto> quotes;
 }

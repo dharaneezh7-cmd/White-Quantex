@@ -78,8 +78,10 @@ export default function InvestmentActionPage() {
   })
 
   const isKycApproved = kycInfo?.kycStatus === "APPROVED"
-  const isBelowMinimum = amount < requiredMin
-  const isFormValid = isKycApproved && !isBelowMinimum && hasAgreedCovenants && isAccredited && investorName.trim().length >= 3
+  const isPositiveAmount = typeof amount === "number" && !isNaN(amount) && Number.isFinite(amount) && amount > 0
+  const isBelowMinimum = !isPositiveAmount || amount < requiredMin
+  const isExceedsMaximum = isPositiveAmount && amount > 100_000_000
+  const isFormValid = isKycApproved && !isBelowMinimum && !isExceedsMaximum && hasAgreedCovenants && isAccredited && investorName.trim().length >= 3
 
   const handleExecuteSubscription = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -87,9 +89,25 @@ export default function InvestmentActionPage() {
       setKycError("Individual KYC verification is mandatory before executing investments. Please complete identity verification.")
       return
     }
+    if (!isPositiveAmount) {
+      setKycError("Please enter a valid positive numerical investment amount.")
+      return
+    }
+    if (amount < requiredMin) {
+      setKycError(`Minimum investment threshold not met. The issuer requires at least $${requiredMin.toLocaleString()} to participate.`)
+      return
+    }
+    if (isExceedsMaximum) {
+      setKycError("Commitment exceeds single institutional allocation ceiling ($100,000,000). Please contact Syndicate Desk.")
+      return
+    }
     if (!isFormValid) return
     setIsSubmitting(true)
     setKycError(null)
+
+    const sharePrice = 25
+    const safeSharePrice = sharePrice > 0 ? sharePrice : 25
+    const sharesCount = Math.max(1, Math.floor(amount / safeSharePrice))
 
     try {
       // Send statutory order to Spring Boot backend
@@ -97,10 +115,10 @@ export default function InvestmentActionPage() {
         companyId: comp.id,
         ticker: comp.ticker,
         amount: amount,
-        shares: Math.floor(amount / 25),
+        shares: sharesCount,
         shareClass: inv.securityType || "Series Seed Preferred",
         type: "PRIMARY_SUBSCRIPTION",
-        pricePerShare: 25,
+        pricePerShare: safeSharePrice,
       })
     } catch (err: any) {
       if (err.response?.status === 403) {
@@ -113,9 +131,8 @@ export default function InvestmentActionPage() {
 
     try {
       const orderId = `ORD-${comp.ticker || "VNT"}-${Date.now().toString().slice(-6)}`
-      const sharePrice = 25
-      const sharesCount = Math.floor(amount / sharePrice)
       const now = new Date().toISOString()
+      const safeValuation = (comp.valuationNum && comp.valuationNum > 0) ? comp.valuationNum : 50000000
 
       const newOrder = {
         id: orderId,
@@ -127,7 +144,7 @@ export default function InvestmentActionPage() {
         type: "PRIMARY_SUBSCRIPTION",
         shareClass: inv.securityType || "Series Seed Preferred",
         shares: sharesCount,
-        pricePerShare: sharePrice,
+        pricePerShare: safeSharePrice,
         totalAmount: amount,
         status: "FILLED",
         settlementStatus: "SETTLED",
@@ -147,7 +164,7 @@ export default function InvestmentActionPage() {
         currentValue: amount,
         unrealizedPl: 0,
         unrealizedPlPercent: 0,
-        ownershipPercent: (amount / (comp.valuationNum || 50000000)) * 100,
+        ownershipPercent: safeValuation > 0 ? (amount / safeValuation) * 100 : 0,
       }
 
       const isVenture = Boolean(

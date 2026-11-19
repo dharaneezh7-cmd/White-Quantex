@@ -17,9 +17,17 @@ export default [
   route("register/company", "app/register/company/page.tsx"),
   route("register/venture", "app/register/venture/page.tsx"),
 
-  // ── 5. Confirmation ───────────────────────────────────────────────────────
+  // ── 5. Corporate Quarterly Financials & Earnings Filing ────────────────────
+  route("financials", "app/financials/page.tsx"),
+
+  // ── 6. Corporate & Venture Community Milestone Publisher ───────────────────
+  route("post", "app/post/page.tsx"),
+  route("publisher", "app/post/page.tsx", { id: "publisher-alias" }),
+  route("community-post", "app/post/page.tsx", { id: "community-post-alias" }),
+
+  // ── 7. Confirmation ───────────────────────────────────────────────────────
   route("registration-success", "app/registration-success/page.tsx"),
 
-  // ── 6. Catch-all 404 ──────────────────────────────────────────────────────
+  // ── 8. Catch-all 404 ──────────────────────────────────────────────────────
   route("*", "app/not-found/page.tsx"),
 ] satisfies RouteConfig

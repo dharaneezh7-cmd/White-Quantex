@@ -25,6 +25,9 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuthStore } from "@/stores/auth-store"
+import { nodeApi } from "@/services/api/client"
+import { companyService } from "@/services/company/companyService"
+import { CorporateAccessGuard } from "@/components/shared/CorporateAccessGuard"
 import axios from "axios"
 
 interface PresetEntity {
@@ -292,27 +295,43 @@ export default function CompanyPostPublisherPage() {
       updatedAt: new Date().toISOString(),
     }
 
-    // 1. Try publishing to Node API backend if running
+    // 1. Publish to Node API backend (MongoDB community feed)
     try {
-      await axios.post(
-        "http://localhost:5000/api/posts",
-        {
-          content: content.trim(),
-          mediaUrls: mediaUrl.trim() ? [mediaUrl.trim()] : [],
-          postType: mediaUrl.trim() ? "IMAGE" : "TEXT",
-          visibility: "PUBLIC",
-          authorAccountType: accountType,
-          authorType: accountType,
-          authorRole: accountType === "COMPANY" ? "CORPORATE" : "INVESTOR",
-          authorName: entityName,
-          authorHeadline: headline.trim(),
-          ticker: entityTicker,
-          companyId: entityName,
-        },
-        { timeout: 3000 }
-      )
+      await nodeApi.post("/posts", {
+        content: content.trim(),
+        mediaUrls: mediaUrl.trim() ? [mediaUrl.trim()] : [],
+        postType: mediaUrl.trim() ? "IMAGE" : "TEXT",
+        visibility: "PUBLIC",
+        authorAccountType: accountType,
+        authorType: accountType,
+        authorRole: accountType === "COMPANY" ? "CORPORATE" : "INVESTOR",
+        authorName: entityName,
+        authorHeadline: headline.trim(),
+        ticker: entityTicker,
+        companyId: entityName,
+      })
     } catch {
-      // Backend might be offline or mocked; localStorage sync handles it seamlessly
+      try {
+        await axios.post(
+          "http://localhost:3001/api/posts",
+          {
+            content: content.trim(),
+            mediaUrls: mediaUrl.trim() ? [mediaUrl.trim()] : [],
+            postType: mediaUrl.trim() ? "IMAGE" : "TEXT",
+            visibility: "PUBLIC",
+            authorAccountType: accountType,
+            authorType: accountType,
+            authorRole: accountType === "COMPANY" ? "CORPORATE" : "INVESTOR",
+            authorName: entityName,
+            authorHeadline: headline.trim(),
+            ticker: entityTicker,
+            companyId: entityName,
+          },
+          { timeout: 3000 }
+        )
+      } catch (backendErr) {
+        // Backend optional in offline modes; localStorage sync handles it seamlessly
+      }
     }
 
     // 2. Persist in local synchronization storage for instant community display
@@ -336,7 +355,8 @@ export default function CompanyPostPublisherPage() {
   }
 
   return (
-    <div className="py-10 sm:py-14 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto space-y-10">
+    <CorporateAccessGuard strictBlock={true}>
+      <div className="py-10 sm:py-14 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto space-y-10">
       
       {/* ── Page Header ── */}
       <div className="space-y-3 text-center sm:text-left border-b border-[var(--wq-border)] pb-8">
@@ -767,6 +787,7 @@ export default function CompanyPostPublisherPage() {
         </div>
       )}
 
-    </div>
+      </div>
+    </CorporateAccessGuard>
   )
 }

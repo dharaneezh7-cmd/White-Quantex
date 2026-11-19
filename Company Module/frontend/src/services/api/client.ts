@@ -1,6 +1,7 @@
 import axios from "axios"
 
 const SPRING_BASE_URL = import.meta.env.VITE_SPRING_BASE_URL || "/api/spring"
+const NODE_BASE_URL = import.meta.env.VITE_NODE_BASE_URL || "/api/node"
 
 export const springApi = axios.create({
   baseURL: SPRING_BASE_URL,
@@ -10,8 +11,16 @@ export const springApi = axios.create({
   },
 })
 
+export const nodeApi = axios.create({
+  baseURL: NODE_BASE_URL,
+  withCredentials: true,
+  headers: {
+    "Content-Type": "application/json",
+  },
+})
+
 // Inject user context from localStorage if exists
-springApi.interceptors.request.use((config) => {
+const attachUserContext = (config: any) => {
   if (typeof window !== "undefined") {
     try {
       const saved = localStorage.getItem("wq_user_session")
@@ -26,9 +35,17 @@ springApi.interceptors.request.use((config) => {
     } catch {}
   }
   return config
-})
+}
+
+springApi.interceptors.request.use(attachUserContext)
+nodeApi.interceptors.request.use(attachUserContext)
 
 springApi.interceptors.response.use(
+  (response) => response,
+  (error) => Promise.reject(error)
+)
+
+nodeApi.interceptors.response.use(
   (response) => response,
   (error) => Promise.reject(error)
 )

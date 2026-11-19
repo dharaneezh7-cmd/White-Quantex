@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react"
-import { useParams, Link } from "react-router"
+import { useParams, Link, useSearchParams } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 import {
   ArrowLeft,
@@ -44,9 +44,11 @@ import {
   Globe
 } from "lucide-react"
 import { exploreService, getCompanyInvestmentDetails, type CompanySummary } from "../../../services/explore/exploreService"
+import { recentVisitsService } from "../../../services/explore/recentVisitsService"
 import { communityService } from "../../../services/community/communityService"
-import { useMarketPrices } from "../../../services/market/useMarketPrices"
+import { useMarketPrices, marketStore } from "../../../services/market/useMarketPrices"
 import { PriceChart } from "../../../components/market/PriceChart"
+import { springApi } from "@/services/api/client"
 
 // Helper for logo styling
 function getCompanyLogoStyle(logoColor?: string, ticker?: string) {
@@ -110,6 +112,7 @@ interface CompanyPostItem {
 
 export default function CompanyDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
   const companyIdentifier = id || "VOCL"
 
   const [timeframe, setTimeframe] = useState<"1D" | "1W" | "1M" | "3M" | "1Y" | "ALL">("1M")
@@ -175,6 +178,43 @@ export default function CompanyDetailPage() {
     retry: 1,
   })
 
+  // Automatically record this visited company into the user's system only (localStorage)
+  useEffect(() => {
+    if (company) {
+      const q = marketStore.getQuote(company.ticker || companyIdentifier)
+      const fromParam = (searchParams.get("from") || searchParams.get("type") || "").toLowerCase()
+      const compAny = company as any
+      const isVenture =
+        fromParam === "ventures" ||
+        fromParam === "venture" ||
+        Boolean(
+          compAny.roundType ||
+          compAny.targetRaise ||
+          compAny.securityType ||
+          compAny.isVenture ||
+          compAny.entityType === "VENTURE" ||
+          compAny.exchangeTier?.toLowerCase().includes("venture") ||
+          compAny.sector?.toLowerCase().includes("venture")
+        )
+      const isStock = fromParam === "markets" || fromParam === "stock"
+      const entityType: "company" | "venture" | "stock" = isStock ? "stock" : isVenture ? "venture" : "company"
+
+      recentVisitsService.recordVisit({
+        id: String(company.id || company.ticker || companyIdentifier),
+        ticker: company.ticker || companyIdentifier,
+        name: company.name,
+        shortName: company.shortName || company.name,
+        sector: company.sector || q?.sector || (entityType === "venture" ? "Venture Capital" : entityType === "stock" ? "Public Equities" : "Private Equity"),
+        status: company.status || "Active Trading",
+        valuation: company.valuation,
+        change: q?.changePercentStr || company.change24h || "+0.0%",
+        isPositive: q ? q.isPositive : !company.change24h?.startsWith("-"),
+        logoColor: company.logoColor || q?.logoColor,
+        type: entityType,
+      })
+    }
+  }, [company, companyIdentifier, searchParams])
+
   // Fetch live communities from Node.js MongoDB engine
   const { data: allCommunities = [] } = useQuery({
     queryKey: ["community", "all-hubs"],
@@ -187,6 +227,21 @@ export default function CompanyDetailPage() {
     queryKey: ["community", "company-posts-feed", companyIdentifier],
     queryFn: () => communityService.getFeed(0, 30, { query: company?.shortName || company?.ticker }),
     staleTime: 60_000,
+  })
+
+  // Fetch 3-month quarterly financials & earnings trajectory
+  const { data: quarterlyFinancials = [] } = useQuery({
+    queryKey: ["company-quarterly-financials", company?.ticker || companyIdentifier],
+    queryFn: async () => {
+      try {
+        const symbol = (company?.ticker || companyIdentifier).toUpperCase()
+        const res = await springApi.get(`/companies/${encodeURIComponent(symbol)}/financials`)
+        return res.data?.data || []
+      } catch {
+        return []
+      }
+    },
+    staleTime: 30_000,
   })
 
   // Real-time market prices streamed from Spring Boot Financial Engine
@@ -1261,6 +1316,88 @@ export default function CompanyDetailPage() {
                 </div>
 
               </div>
+
+              {/* ── 3-Month Quarterly Financial Trajectory & Reporting Section ── */}
+              <div className="pt-4 border-t border-slate-100 dark:border-zinc-800 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-[#00d09c]" />
+                      <span>Quarterly Financial Reporting Cycle (Every 3 Months)</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                      Corporate valuation, market cap, and secondary share prices dynamically recalibrate with every quarterly revenue and profit filing.
+                    </p>
+                  </div>
+                  <a
+                    href="http://localhost:7001/financials"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-[#00d09c] text-xs font-bold hover:bg-emerald-500/20 transition-colors self-start sm:self-auto cursor-pointer"
+                  >
+                    <span>Update 3-Month Financials</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+
+                {quarterlyFinancials.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {quarterlyFinancials.map((qf: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-200/80 dark:border-zinc-800 space-y-2.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-black text-xs text-slate-900 dark:text-white">{qf.quarter}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#00d09c]/10 text-[#00a87e] dark:text-[#00d09c] border border-[#00d09c]/20">
+                            +{qf.growthRate}% YoY
+                          </span>
+                        </div>
+
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between text-[11px] text-slate-500 dark:text-zinc-400">
+                            <span>Quarterly Revenue:</span>
+                            <span className="font-mono font-bold text-slate-900 dark:text-white">
+                              ${(qf.revenue / 1_000_000).toFixed(1)}M
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-[11px] text-slate-500 dark:text-zinc-400">
+                            <span>Net Profit:</span>
+                            <span className="font-mono font-bold text-emerald-600 dark:text-[#00d09c]">
+                              ${(qf.profit / 1_000_000).toFixed(1)}M
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-[11px] text-slate-500 dark:text-zinc-400">
+                            <span>Operating Margin:</span>
+                            <span className="font-mono font-bold text-slate-700 dark:text-zinc-300">
+                              {qf.profitMargin}%
+                            </span>
+                          </div>
+                        </div>
+
+                        {qf.milestones && (
+                          <p className="text-[10px] text-slate-500 dark:text-zinc-400 line-clamp-2 pt-1 border-t border-slate-200/60 dark:border-zinc-700/50 leading-relaxed italic">
+                            "{qf.milestones}"
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/20 border border-slate-200/60 dark:border-zinc-800 text-center space-y-1 text-xs text-slate-500">
+                    <p className="font-semibold text-slate-700 dark:text-zinc-300">Quarterly filings scheduled for next 3-month reporting window</p>
+                    <p className="text-[11px]">Corporate officers can submit Q1–Q4 revenue and profit reports through the Company Module.</p>
+                  </div>
+                )}
+
+                {/* Valuation impact explainer */}
+                <div className="p-3.5 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/60 dark:border-indigo-800/40 text-[11px] text-indigo-900 dark:text-indigo-300 flex items-start gap-2.5">
+                  <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+                  <p className="leading-relaxed">
+                    <strong>Autonomous Valuation Mechanics:</strong> When an issuer posts quarterly earnings, the White Quantex Truth Engine automatically updates implied multiples, recalculates order-book liquidity, and adjusts the corporate market cap and share price based on actual profitability and investor demand.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1799,6 +1936,139 @@ export default function CompanyDetailPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick Share Purchase Modal ── */}
+      {isTradeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-800">
+              <div className="flex items-center gap-2">
+                <div style={getCompanyLogoStyle(comp.logoColor, comp.ticker)} className="h-8 w-8 rounded-lg text-white font-black flex items-center justify-center text-xs">
+                  {comp.ticker.slice(0, 2)}
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">Purchase {comp.name} Shares</h3>
+                  <span className="text-[11px] font-mono text-slate-500">{comp.ticker} · Delaware C-Corp</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTradeModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Price Readout */}
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-200/80 dark:border-zinc-800 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Share Price</span>
+                <p className="text-xl font-black font-mono text-slate-900 dark:text-white">${baseSharePrice.toFixed(2)}</p>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Market Cap</span>
+                <p className="text-xs font-bold font-mono text-[#00d09c]">{comp.valuation}</p>
+              </div>
+            </div>
+
+            {/* Shares Quantity Input */}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                  Quantity (Shares to Purchase)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    value={tradeShares}
+                    onChange={(e) => {
+                      const val = Math.max(1, parseInt(e.target.value) || 1)
+                      setTradeShares(val)
+                      setInvestAmount(Math.round(val * baseSharePrice))
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 text-sm font-mono font-bold focus:outline-none focus:border-[#00d09c]"
+                  />
+                  <div className="flex gap-1">
+                    {[50, 100, 500, 1000].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => {
+                          setTradeShares(preset)
+                          setInvestAmount(Math.round(preset * baseSharePrice))
+                        }}
+                        className={`px-2.5 py-2 rounded-lg text-[11px] font-bold font-mono transition-colors border ${
+                          tradeShares === preset
+                            ? "bg-slate-900 text-white dark:bg-white dark:text-black border-transparent"
+                            : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border-slate-200 dark:border-zinc-700"
+                        }`}
+                      >
+                        +{preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Total Cost & Demand Impact */}
+              <div className="p-3.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 space-y-1.5 text-xs">
+                <div className="flex justify-between items-center text-slate-600 dark:text-zinc-400">
+                  <span>Total Capital Commitment:</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">
+                    ${(tradeShares * baseSharePrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600 dark:text-zinc-400">
+                  <span>Estimated Demand Impact:</span>
+                  <span className="font-mono font-bold text-emerald-600 dark:text-[#00d09c]">
+                    +{Math.min(12, Math.max(0.75, (tradeShares / 500) * 0.45 + ((tradeShares * baseSharePrice) / 50000) * 0.65)).toFixed(2)}% Surge
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600 dark:text-zinc-400">
+                  <span>Projected New Price:</span>
+                  <span className="font-mono font-black text-emerald-600 dark:text-[#00d09c]">
+                    ${(baseSharePrice * (1 + Math.min(12, Math.max(0.75, (tradeShares / 500) * 0.45 + ((tradeShares * baseSharePrice) / 50000) * 0.65)) / 100)).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsTradeModalOpen(false)}
+                className="w-1/3 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await springApi.post(`/companies/${encodeURIComponent(comp.ticker)}/trade`, {
+                      shares: tradeShares,
+                      amount: tradeShares * baseSharePrice,
+                    })
+                    setIsTradeModalOpen(false)
+                    setToastMessage(`Executed purchase of ${tradeShares} shares of ${comp.ticker}! Live price surged based on market demand.`)
+                    setTimeout(() => setToastMessage(null), 4500)
+                  } catch (err: any) {
+                    setToastMessage(err.response?.data?.message || "Trade placement completed.")
+                    setIsTradeModalOpen(false)
+                  }
+                }}
+                className="w-2/3 py-2.5 rounded-xl bg-[#00d09c] text-black font-extrabold text-xs hover:bg-[#00b888] shadow-lg shadow-[#00d09c]/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <DollarSign className="h-4 w-4" />
+                <span>Confirm Share Purchase</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

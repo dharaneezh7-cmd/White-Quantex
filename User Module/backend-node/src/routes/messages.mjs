@@ -386,8 +386,6 @@ router.get("/conversations", async (req, res) => {
   try {
     const currentUserId = req.user?.id || req.headers["x-wq-user-id"] || "bbc5fd04-2c10-430d-9a14-f29a2d60cccc"
 
-    await seedDefaultUserConversations(currentUserId, req.user)
-
     const conversations = await Conversation.find({
       participants: currentUserId,
       archivedBy: { $ne: currentUserId },

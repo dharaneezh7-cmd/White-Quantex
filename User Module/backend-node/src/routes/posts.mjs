@@ -6,6 +6,7 @@ import { Like } from "../models/Like.mjs"
 import { Bookmark } from "../models/Bookmark.mjs"
 import { Notification } from "../models/Notification.mjs"
 import { Member } from "../models/Member.mjs"
+import { Follow } from "../models/Follow.mjs"
 import { authMiddleware, requireAuth } from "../middleware/auth.mjs"
 import { recommendationService } from "../services/recommendationService.mjs"
 import { escapeRegex, sanitizeHtml } from "../utils/security.mjs"
@@ -138,26 +139,42 @@ router.get("/", async (req, res) => {
       visibilityFilter = { visibility: "PUBLIC" }
     } else {
       // Authenticated users can see:
-      // 1. PUBLIC posts
+      // 1. PUBLIC posts (everyone can view)
       // 2. All posts authored by themselves (Public, Protected, or Private)
       // 3. PROTECTED posts:
-      //    - If general post (no communityId): visible to authenticated users
+      //    - If general post: visible to all community members / authenticated users / followers
       //    - If community post: visible to members of that community or the author
-      const userJoinedCommunities = await Community.find({ members: userId }).select("_id").lean()
+      // 4. PRIVATE posts:
+      //    - Visible to the author
+      //    - Visible to followers who have been granted private access by the author
+      const [userJoinedCommunities, privateAccessFollows] = await Promise.all([
+        Community.find({ members: userId }).select("_id").lean(),
+        Follow.find({ followerWqUserId: userId, hasPrivateAccess: true }).select("followingWqUserId").lean(),
+      ])
       const userJoinedCommIds = userJoinedCommunities.map((c) => c._id.toString())
+      const authorsAllowingPrivate = privateAccessFollows.map((f) => f.followingWqUserId)
+
+      const baseOr = [
+        { visibility: "PUBLIC" },
+        { wqAuthorId: userId },
+        {
+          visibility: { $in: ["PROTECTED", "FOLLOWERS"] },
+          $or: [
+            { communityId: { $in: [null, "", undefined] } },
+            { communityId: { $in: userJoinedCommIds } },
+          ],
+        },
+      ]
+
+      if (authorsAllowingPrivate.length > 0) {
+        baseOr.push({
+          visibility: "PRIVATE",
+          wqAuthorId: { $in: authorsAllowingPrivate },
+        })
+      }
 
       visibilityFilter = {
-        $or: [
-          { visibility: "PUBLIC" },
-          { wqAuthorId: userId },
-          {
-            visibility: { $in: ["PROTECTED", "FOLLOWERS"] },
-            $or: [
-              { communityId: { $in: [null, "", undefined] } },
-              { communityId: { $in: userJoinedCommIds } },
-            ],
-          },
-        ],
+        $or: baseOr,
       }
     }
 
@@ -461,10 +478,23 @@ router.get("/:id", async (req, res) => {
     // ── Enforce Visibility Policy ─────────────────────────────────────────────
     if (visibility === "PRIVATE") {
       if (!isAuthor) {
-        return res.status(403).json({
-          success: false,
-          message: "Access denied. This post is private to its author.",
-        })
+        // Check if current user is a follower with private access
+        let hasAccess = false
+        if (userId) {
+          const follow = await Follow.findOne({
+            followerWqUserId: userId,
+            followingWqUserId: post.wqAuthorId,
+            hasPrivateAccess: true,
+          }).lean()
+          if (follow) hasAccess = true
+        }
+
+        if (!hasAccess) {
+          return res.status(403).json({
+            success: false,
+            message: "Access denied. This post is private to authorized followers.",
+          })
+        }
       }
     } else if (visibility === "PROTECTED") {
       if (!userId) {

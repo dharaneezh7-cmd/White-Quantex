@@ -1,7 +1,8 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { useNavigate, Link } from "react-router"
-import { Check, ChevronLeft, ChevronRight, Building2, AlertCircle } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Building2, AlertCircle, LogIn } from "lucide-react"
 import { companyService } from "@/services/company/companyService"
+import { useAuthStore } from "@/stores/auth-store"
 
 const INDUSTRIES = [
   "AI & Machine Learning", "Fintech", "CleanTech & Energy", "SaaS & Cloud",
@@ -19,9 +20,16 @@ const REGIONS = [
 
 export default function CompanyRegistrationPage() {
   const navigate = useNavigate()
+  const { user, isAuthenticated } = useAuthStore()
   const [currentStep, setCurrentStep] = useState(1)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate("/login?next=/register/company")
+    }
+  }, [isAuthenticated, navigate])
   const [formData, setFormData] = useState({
     // Step 1
     companyName: "",
@@ -166,16 +174,10 @@ export default function CompanyRegistrationPage() {
         securityType: "Delaware C-Corp Preferred Equity",
       }
 
-      if (typeof window !== "undefined") {
-        try {
-          const existingStr = localStorage.getItem("wq_registered_companies")
-          const existing = existingStr ? JSON.parse(existingStr) : []
-          localStorage.setItem("wq_registered_companies", JSON.stringify([newCompany, ...existing]))
-        } catch {}
-      }
+      let registeredEntityId = `comp-${Date.now()}`
 
       try {
-        await companyService.registerCompany({
+        const backendRes = await companyService.registerCompany({
           name: formData.companyName,
           legalName: formData.legalName,
           type: formData.companyType as "STARTUP" | "EXISTING_COMPANY",
@@ -196,11 +198,31 @@ export default function CompanyRegistrationPage() {
           description: formData.description,
           logoUrl: formData.logoUrl || undefined,
         })
+        if (backendRes?.data?.id) {
+          registeredEntityId = backendRes.data.id
+        }
       } catch (backendErr) {
-        // Backend optional in offline/demo modes; localStorage sync ensures immediate visibility
+        // Backend fallback handling
       }
 
-      navigate("/registration-success")
+      newCompany.id = registeredEntityId
+
+      if (typeof window !== "undefined") {
+        try {
+          const existingStr = localStorage.getItem("wq_registered_companies")
+          const existing = existingStr ? JSON.parse(existingStr) : []
+          localStorage.setItem("wq_registered_companies", JSON.stringify([newCompany, ...existing]))
+          sessionStorage.setItem("wq_last_registered_entity", JSON.stringify({
+            id: registeredEntityId,
+            name: formData.companyName,
+            ticker: tickerClean,
+            type: "COMPANY",
+            legalEntity: newCompany.legalEntity
+          }))
+        } catch {}
+      }
+
+      navigate(`/registration-success?id=${encodeURIComponent(registeredEntityId)}&type=company&ticker=${encodeURIComponent(tickerClean)}`)
     } catch (err: any) {
       setError(err.response?.data?.message || "Registration failed. Please try again.")
     } finally {

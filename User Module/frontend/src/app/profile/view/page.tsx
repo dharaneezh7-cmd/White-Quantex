@@ -51,6 +51,7 @@ interface FollowUserItem {
   verificationLevel: string
   followersCount: number
   isFollowing?: boolean
+  hasPrivateAccess?: boolean
 }
 
 export default function ViewProfilePage() {
@@ -219,6 +220,34 @@ export default function ViewProfilePage() {
           prev.map((u) => (u.id === targetUserId ? { ...u, isFollowing: currentStatus } : u))
         )
       }
+    }
+  }
+
+  // Toggle private access for a follower (only author/self can do this)
+  const handleTogglePrivateAccess = async (targetFollowerId: string) => {
+    setFollowersList((prev) =>
+      prev.map((u) => (u.id === targetFollowerId ? { ...u, hasPrivateAccess: !u.hasPrivateAccess } : u))
+    )
+
+    try {
+      const apiBase = import.meta.env.VITE_API_URL || "http://localhost:3001/api"
+      const res = await fetch(`${apiBase}/follows/${encodeURIComponent(targetFollowerId)}/private-access`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authUser?.id ? { "x-wq-user-id": authUser.id } : {}),
+        },
+      })
+      const data = await res.json()
+      if (!data.success) {
+        setFollowersList((prev) =>
+          prev.map((u) => (u.id === targetFollowerId ? { ...u, hasPrivateAccess: !u.hasPrivateAccess } : u))
+        )
+      }
+    } catch {
+      setFollowersList((prev) =>
+        prev.map((u) => (u.id === targetFollowerId ? { ...u, hasPrivateAccess: !u.hasPrivateAccess } : u))
+      )
     }
   }
 
@@ -785,30 +814,53 @@ export default function ViewProfilePage() {
                             </div>
                           </div>
 
-                          <Button
-                            size="sm"
-                            variant={user.isFollowing ? "outline" : "default"}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleToggleFollowInList(user.id, Boolean(user.isFollowing), true)
-                            }}
-                            className={cn(
-                              "h-7 px-3 text-[11px] font-bold rounded-lg cursor-pointer transition-all shrink-0",
-                              user.isFollowing
-                                ? "border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-slate-300 bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800"
-                                : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                          <div className="flex items-center gap-2 shrink-0">
+                            {/* Private Access Toggle (Only visible to profile owner/author) */}
+                            {isSelf && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleTogglePrivateAccess(user.id)
+                                }}
+                                title={user.hasPrivateAccess ? "Revoke Private Access" : "Grant Private Access"}
+                                className={cn(
+                                  "h-7 px-2.5 text-[10px] font-bold rounded-lg border transition-all cursor-pointer flex items-center gap-1",
+                                  user.hasPrivateAccess
+                                    ? "bg-rose-500/15 border-rose-500/40 text-rose-600 dark:text-rose-400"
+                                    : "bg-slate-100 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-500 hover:text-rose-500"
+                                )}
+                              >
+                                <Lock className="h-3 w-3" />
+                                <span>{user.hasPrivateAccess ? "Private Access" : "Grant Private"}</span>
+                              </button>
                             )}
-                          >
-                            {user.isFollowing ? (
-                              <span className="flex items-center gap-1">
-                                <Check className="h-3 w-3 text-emerald-500" /> Following
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1">
-                                <UserPlus className="h-3 w-3" /> Follow
-                              </span>
-                            )}
-                          </Button>
+
+                            <Button
+                              size="sm"
+                              variant={user.isFollowing ? "outline" : "default"}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleToggleFollowInList(user.id, Boolean(user.isFollowing), true)
+                              }}
+                              className={cn(
+                                "h-7 px-3 text-[11px] font-bold rounded-lg cursor-pointer transition-all shrink-0",
+                                user.isFollowing
+                                  ? "border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-slate-300 bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                                  : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                              )}
+                            >
+                              {user.isFollowing ? (
+                                <span className="flex items-center gap-1">
+                                  <Check className="h-3 w-3 text-emerald-500" /> Following
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1">
+                                  <UserPlus className="h-3 w-3" /> Follow
+                                </span>
+                              )}
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>

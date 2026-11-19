@@ -6,11 +6,19 @@ const router = Router()
 // GET /api/notifications - List notifications
 router.get("/", async (req, res) => {
   try {
-    const wqUserId = req.headers["x-wq-user-id"] || "wq-uuid-demo-author"
+    const wqUserId = req.headers["x-wq-user-id"] || req.user?.id
+    if (!wqUserId) {
+      return res.json({
+        success: true,
+        message: "No user authenticated",
+        data: [],
+        timestamp: new Date().toISOString(),
+      })
+    }
     const filterType = req.query.filter || "all"
 
     const query = {
-      $or: [{ wqUserId }, { wqUserId: "all" }, { wqUserId: "wq-uuid-demo-author" }],
+      $or: [{ wqUserId }, { wqUserId: "all" }],
     }
 
     if (filterType === "mentions") {

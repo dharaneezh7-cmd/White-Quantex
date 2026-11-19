@@ -1,5 +1,7 @@
 import { Router } from "express"
 import { Community } from "../models/Community.mjs"
+import { CommunityMessage } from "../models/CommunityMessage.mjs"
+import { Member } from "../models/Member.mjs"
 import { authMiddleware, requireAuth } from "../middleware/auth.mjs"
 import { sanitizeHtml } from "../utils/security.mjs"
 
@@ -248,6 +250,150 @@ router.delete("/:id/join", requireAuth, async (req, res) => {
       success: true,
       message: "Left community hub",
       data: { id: comm._id.toString(), isJoined: false, memberCount: comm.memberCount },
+      timestamp: new Date().toISOString(),
+    })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
+// GET /api/communities/:id/messages - Get messages in community WhatsApp-style group chat
+router.get("/:id/messages", async (req, res) => {
+  try {
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id)
+    const comm = await Community.findOne(isObjectId ? { _id: req.params.id } : { slug: req.params.id }).lean()
+    if (!comm) {
+      return res.status(404).json({ success: false, message: "Community not found" })
+    }
+
+    const commId = comm._id.toString()
+    const messages = await CommunityMessage.find({ communityId: commId, isDeleted: false })
+      .sort({ createdAt: 1 })
+      .limit(100)
+      .lean()
+
+    const formatted = messages.map((m) => ({
+      id: m._id.toString(),
+      communityId: m.communityId,
+      senderWqUserId: m.senderWqUserId,
+      senderName: m.senderName,
+      senderUsername: m.senderUsername,
+      senderAvatarUrl: m.senderAvatarUrl,
+      content: m.content,
+      mediaUrl: m.mediaUrl,
+      reactions: m.reactions || [],
+      createdAt: m.createdAt,
+    }))
+
+    res.json({
+      success: true,
+      message: "Community messages retrieved",
+      data: formatted,
+      timestamp: new Date().toISOString(),
+    })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
+// POST /api/communities/:id/messages - Send message to community WhatsApp-style group chat
+router.post("/:id/messages", requireAuth, async (req, res) => {
+  try {
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id)
+    const comm = await Community.findOne(isObjectId ? { _id: req.params.id } : { slug: req.params.id })
+    if (!comm) {
+      return res.status(404).json({ success: false, message: "Community not found" })
+    }
+
+    const { content, mediaUrl } = req.body
+    if (!content || !content.trim()) {
+      return res.status(400).json({ success: false, message: "Message content cannot be empty" })
+    }
+
+    const user = req.user
+    const senderWqUserId = user.id
+
+    // Check if user has joined this community (or is the owner)
+    const isMember = (comm.members || []).includes(senderWqUserId) || comm.createdByWqUserId === senderWqUserId
+    if (!isMember) {
+      return res.status(403).json({
+        success: false,
+        message: "You must join this community before you can send messages in the group chat.",
+      })
+    }
+
+    const senderName = user.name || "Ecosystem Participant"
+    const senderUsername = user.username || ""
+
+    // Fetch avatar if available
+    const member = await Member.findOne({ wqUserId: senderWqUserId }).lean()
+    const senderAvatarUrl = member?.avatarUrl || member?.avatar || ""
+
+    const msg = new CommunityMessage({
+      communityId: comm._id.toString(),
+      senderWqUserId,
+      senderName,
+      senderUsername,
+      senderAvatarUrl,
+      content: sanitizeHtml(content.trim()),
+      mediaUrl: mediaUrl ? mediaUrl.trim() : "",
+    })
+
+    await msg.save()
+
+    res.status(201).json({
+      success: true,
+      message: "Message sent",
+      data: {
+        id: msg._id.toString(),
+        communityId: msg.communityId,
+        senderWqUserId: msg.senderWqUserId,
+        senderName: msg.senderName,
+        senderUsername: msg.senderUsername,
+        senderAvatarUrl: msg.senderAvatarUrl,
+        content: msg.content,
+        mediaUrl: msg.mediaUrl,
+        reactions: msg.reactions,
+        createdAt: msg.createdAt,
+      },
+      timestamp: new Date().toISOString(),
+    })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
+// POST /api/communities/:id/messages/:msgId/reaction - React to message
+router.post("/:id/messages/:msgId/reaction", requireAuth, async (req, res) => {
+  try {
+    const { emoji } = req.body
+    if (!emoji) {
+      return res.status(400).json({ success: false, message: "Emoji required" })
+    }
+
+    const msg = await CommunityMessage.findById(req.params.msgId)
+    if (!msg) {
+      return res.status(404).json({ success: false, message: "Message not found" })
+    }
+
+    const userId = req.user.id
+    const existingIndex = msg.reactions.findIndex((r) => r.wqUserId === userId && r.emoji === emoji)
+    if (existingIndex > -1) {
+      msg.reactions.splice(existingIndex, 1)
+    } else {
+      msg.reactions.push({
+        emoji,
+        wqUserId: userId,
+        username: req.user.username || "",
+      })
+    }
+
+    await msg.save()
+
+    res.json({
+      success: true,
+      message: "Reaction updated",
+      data: msg.reactions,
       timestamp: new Date().toISOString(),
     })
   } catch (err) {

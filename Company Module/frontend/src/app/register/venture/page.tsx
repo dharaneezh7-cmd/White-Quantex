@@ -1,7 +1,8 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { useNavigate, Link } from "react-router"
 import { Check, ChevronLeft, ChevronRight, Rocket, AlertCircle } from "lucide-react"
 import { companyService } from "@/services/company/companyService"
+import { useAuthStore } from "@/stores/auth-store"
 
 const INDUSTRIES = [
   "AI & Machine Learning", "Fintech", "CleanTech & Energy", "SaaS & Cloud",
@@ -15,9 +16,16 @@ const STAGES = [
 
 export default function VentureRegistrationPage() {
   const navigate = useNavigate()
+  const { user, isAuthenticated } = useAuthStore()
   const [currentStep, setCurrentStep] = useState(1)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate("/login?next=/register/venture")
+    }
+  }, [isAuthenticated, navigate])
   const [formData, setFormData] = useState({
     // Step 1
     ventureName: "",
@@ -156,16 +164,10 @@ export default function VentureRegistrationPage() {
         securityType: "Delaware C-Corp Preferred Equity",
       }
 
-      if (typeof window !== "undefined") {
-        try {
-          const existingStr = localStorage.getItem("wq_registered_ventures")
-          const existing = existingStr ? JSON.parse(existingStr) : []
-          localStorage.setItem("wq_registered_ventures", JSON.stringify([newVenture, ...existing]))
-        } catch {}
-      }
+      let registeredVentureId = `vnt-${Date.now()}`
 
       try {
-        await companyService.registerVenture({
+        const backendRes = await companyService.registerVenture({
           name: formData.ventureName,
           legalName: formData.legalEntityName || formData.ventureName,
           tagline: formData.tagline,
@@ -183,11 +185,31 @@ export default function VentureRegistrationPage() {
           pitchDeckUrl: formData.pitchDeckUrl || undefined,
           logoUrl: formData.logoUrl || undefined,
         })
+        if (backendRes?.data?.id) {
+          registeredVentureId = backendRes.data.id
+        }
       } catch (backendErr) {
-        // Backend optional in offline/demo modes; localStorage sync ensures immediate visibility
+        // Fallback
       }
 
-      navigate("/registration-success")
+      newVenture.id = registeredVentureId
+
+      if (typeof window !== "undefined") {
+        try {
+          const existingStr = localStorage.getItem("wq_registered_ventures")
+          const existing = existingStr ? JSON.parse(existingStr) : []
+          localStorage.setItem("wq_registered_ventures", JSON.stringify([newVenture, ...existing]))
+          sessionStorage.setItem("wq_last_registered_entity", JSON.stringify({
+            id: registeredVentureId,
+            name: formData.ventureName,
+            ticker: tickerClean,
+            type: "VENTURE",
+            legalEntity: newVenture.legalEntity
+          }))
+        } catch {}
+      }
+
+      navigate(`/registration-success?id=${encodeURIComponent(registeredVentureId)}&type=venture&ticker=${encodeURIComponent(tickerClean)}`)
     } catch (err: any) {
       setError(err.response?.data?.message || "Registration failed. Please try again.")
     } finally {

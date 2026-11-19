@@ -142,23 +142,6 @@ export default function LandingPage() {
               <ArrowRight className="h-4 w-4" />
             </Button>
             <Button
-              size="lg"
-              onClick={() => navigate("/financials")}
-              className="h-12 px-6 rounded-none bg-blue-600 hover:bg-blue-700 text-white border border-blue-700 shadow-md text-sm font-bold cursor-pointer inline-flex items-center gap-2"
-            >
-              <TrendingUp className="h-4 w-4" />
-              <span>File Quarterly Financials</span>
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button
-              size="lg"
-              onClick={() => navigate("/post")}
-              className="h-12 px-6 rounded-none bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-zinc-950 dark:hover:bg-slate-100 shadow-md text-sm font-bold cursor-pointer inline-flex items-center gap-2"
-            >
-              <Radio className="h-4 w-4 text-[#00d09c]" />
-              <span>Publish Milestone</span>
-            </Button>
-            <Button
               variant="outline"
               size="lg"
               onClick={() => navigate("/about")}

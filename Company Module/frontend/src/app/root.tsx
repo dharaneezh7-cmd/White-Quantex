@@ -1,4 +1,4 @@
-import React, { Suspense } from "react"
+import React, { Suspense, useEffect } from "react"
 import {
   Links,
   Meta,
@@ -6,9 +6,12 @@ import {
   Scripts,
   ScrollRestoration,
   isRouteErrorResponse,
+  useLocation,
+  useNavigate,
 } from "react-router"
 import "./globals.css"
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query"
+import { useAuthStore } from "@/stores/auth-store"
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -52,7 +55,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
   )
 }
 
+// Routes that can be accessed without having signed into a company account
+const PUBLIC_AUTH_PATHS = ["/login", "/signup", "/create-account"]
+
 export default function Root() {
+  const { isAuthenticated, isLoading } = useAuthStore()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    // If not authenticated and not currently on an auth page, redirect to /login
+    const isPublic = PUBLIC_AUTH_PATHS.some((p) => location.pathname.startsWith(p))
+    if (!isAuthenticated && !isLoading && !isPublic) {
+      const destination = location.pathname + (location.search || "")
+      const nextQuery = destination !== "/" ? `?next=${encodeURIComponent(destination)}` : ""
+      navigate(`/login${nextQuery}`, { replace: true })
+    }
+  }, [isAuthenticated, isLoading, location.pathname, location.search, navigate])
+
   return (
     <Suspense fallback={
       <div className="min-h-dvh flex items-center justify-center bg-[var(--wq-bg)]">

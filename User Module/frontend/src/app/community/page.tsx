@@ -979,109 +979,9 @@ export default function CommunityPage() {
     retry: false,
   })
 
-  // Comprehensive verified fallback dispatches
-  const fallbackEcosystemNews: CorporateNews[] = useMemo(() => [
-    {
-      id: "news-1",
-      companyId: "c1",
-      companyName: "AeroFusion Technologies Ltd.",
-      ticker: "ZEPR",
-      logoColor: "#10b981",
-      category: "Regulatory & SEC",
-      title: "SEC Form 8-K Disclosure: Tier-1 Synthetic Aperture Radar Contract Executed",
-      snippet: "AeroFusion has formally registered definitive commercial delivery contracts for enterprise aerospace telemetry data clearing with federal and commercial allocators.",
-      sentiment: "BULLISH",
-      impactMetric: "+$14.2M ARR",
-      source: "SEC EDGAR / White-Quantex Wire",
-      readTime: "3 min read",
-      isActionRequired: false,
-      publishedAt: "10 mins ago",
-    },
-    {
-      id: "news-2",
-      companyId: "c2",
-      companyName: "OmniCognition Labs",
-      ticker: "OCGN",
-      logoColor: "#6366f1",
-      category: "Earnings & Capital",
-      title: "Q3 Institutional Shareholder Letter: Enterprise LLM Deployment Across 240 Nodes",
-      snippet: "Executive management reports 84% gross margins on private cluster inference deployments with net retention reaching 142% among accredited enterprise partners.",
-      sentiment: "POSITIVE",
-      impactMetric: "84% Margin",
-      source: "Bloomberg Terminal",
-      readTime: "4 min read",
-      isActionRequired: false,
-      publishedAt: "45 mins ago",
-    },
-    {
-      id: "news-3",
-      companyId: "c3",
-      companyName: "TechFlow AI Solutions Inc.",
-      ticker: "TFLOW",
-      logoColor: "#6366f1",
-      category: "Enterprise Distributed Inference",
-      title: "TechFlow AI Closes $40M Enterprise Cloud Inference Deal; ARR Exceeds $15M",
-      snippet: "TechFlow AI signed a 3-year enterprise cloud compute agreement with a Fortune 50 consortium. Annual recurring revenue (ARR) surged past $15.2M (+112% YoY), reinforcing strong momentum leading into its upcoming Series B pricing round.",
-      sentiment: "BULLISH",
-      impactMetric: "+18.4% Uplift",
-      source: "TechCrunch Venture",
-      readTime: "3 min read",
-      isActionRequired: false,
-      publishedAt: "2 hours ago",
-    },
-    {
-      id: "news-4",
-      companyId: "c4",
-      companyName: "Vortex Spatial Systems",
-      ticker: "VRTX",
-      logoColor: "#8b5cf6",
-      category: "Partnerships",
-      title: "Vortex Spatial & Quantum Dynamics Announce Strategic Clearing Protocol",
-      snippet: "Joint venture protocol establishes verified secondary liquidity settlement across distributed satellite ground station assets.",
-      sentiment: "STRATEGIC",
-      impactMetric: "Joint Venture",
-      source: "Financial Times",
-      readTime: "5 min read",
-      isActionRequired: false,
-      publishedAt: "5 hours ago",
-    },
-    {
-      id: "news-5",
-      companyId: "c5",
-      companyName: "NovaGrid Energy Networks",
-      ticker: "GGRID",
-      logoColor: "#f59e0b",
-      category: "Dispatches",
-      title: "Delaware C-Corp Annual General Meeting Date Announced; Proxy Materials Issued",
-      snippet: "Shareholder voting opens for board reappointment and capital expenditure authorization for high-voltage energy storage installations.",
-      sentiment: "NEUTRAL",
-      impactMetric: "AGM Proxy",
-      source: "White-Quantex Wire",
-      readTime: "3 min read",
-      isActionRequired: true,
-      actionLabel: "View Proxy",
-      publishedAt: "8 hours ago",
-    },
-    {
-      id: "news-6",
-      companyId: "c6",
-      companyName: "QuantumMatrix Systems",
-      ticker: "QMAT",
-      logoColor: "#3b82f6",
-      category: "Earnings & Capital",
-      title: "Series B Institutional Syndicate Oversubscribed by 210% with Tier-1 Clearing",
-      snippet: "Lead partners confirm allocation closure at $180M post-money valuation, with secondary escrow deposits finalized in institutional custody.",
-      sentiment: "BULLISH",
-      impactMetric: "$35M Raised",
-      source: "PitchBook / White-Quantex Wire",
-      readTime: "4 min read",
-      isActionRequired: false,
-      publishedAt: "12 hours ago",
-    },
-  ], [])
-
+  // Filtered & Searchable Ecosystem News
   const newsList: CorporateNews[] = useMemo(() => {
-    const list = rawNews && rawNews.length > 0 ? rawNews : fallbackEcosystemNews
+    const list = rawNews && rawNews.length > 0 ? rawNews : []
     return list.filter((item) => {
       if (activeCompanyProfile?.ticker && item.ticker && item.ticker !== activeCompanyProfile.ticker) {
         return false
@@ -1101,7 +1001,7 @@ export default function CommunityPage() {
       }
       return true
     })
-  }, [rawNews, fallbackEcosystemNews, activeCompanyProfile?.ticker, newsCategoryFilter, newsSearchQuery])
+  }, [rawNews, activeCompanyProfile?.ticker, newsCategoryFilter, newsSearchQuery])
 
   const toggleFollowCompany = (compKey: string) => {
     setFollowedCompanies((prev) => {
@@ -1198,119 +1098,8 @@ export default function CommunityPage() {
 
   // ── Company-Specific Official Posts directly from Leadership & Legal ──
   const companyOfficialPosts: Post[] = useMemo(() => {
-    if (!activeCompanyProfile) return []
-    const c = activeCompanyProfile
-    const ceoName = c.ceo || "Dmitri Martinez"
-    const subInd = c.subIndustry?.toLowerCase() || c.sector.toLowerCase()
-
-    return [
-      {
-        id: `official-post-${c.id}-1`,
-        wqAuthorId: `author-${c.id}-corporate`,
-        author: {
-          wqUserId: `author-${c.id}-corporate`,
-          displayName: c.name,
-          username: c.ticker ? c.ticker.toLowerCase() : c.name.toLowerCase().replace(/[^a-z0-9]/g, ""),
-          headline: `Corporate Account • ${ceoName}, CEO`,
-          avatarUrl: "",
-          verificationLevel: (c.verificationLevel as any) || "PLATINUM",
-          authorAccountType: "COMPANY",
-          authorType: "COMPANY",
-          companyId: c.name,
-          ticker: c.ticker,
-        },
-        authorAccountType: "COMPANY",
-        authorType: "COMPANY",
-        companyId: c.name,
-        ticker: c.ticker,
-        content: `Excited to present our Q3 operational milestone for ${c.name} ($${c.ticker}). We successfully concluded commercial pilot trials across our ${subInd} architecture, demonstrating a 3.8x throughput increase with zero thermal downtime. Thank you to our Delaware syndicates and institutional partners on White Quantex.`,
-        mediaUrls: [],
-        postType: "UPDATE" as any,
-        visibility: "PUBLIC" as any,
-        communityName: `${c.sector} & Infrastructure Leaders`,
-        hashtags: [c.sector.replace(/[^a-zA-Z]/g, ""), "Milestone", c.ticker || "Tech"],
-        mentions: [c.ticker],
-        likesCount: 184,
-        commentsCount: 0,
-        sharesCount: 14,
-        bookmarksCount: 31,
-        isLiked: false,
-        isBookmarked: false,
-        createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-        updatedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-      },
-      {
-        id: `official-post-${c.id}-2`,
-        wqAuthorId: `author-${c.id}-legal`,
-        author: {
-          wqUserId: `author-${c.id}-legal`,
-          displayName: c.name,
-          username: `${c.ticker.toLowerCase()}_legal`,
-          headline: `Corporate Governance & Regulatory Affairs`,
-          avatarUrl: "",
-          verificationLevel: "GOLD" as any,
-          authorAccountType: "COMPANY",
-          authorType: "COMPANY",
-          companyId: c.name,
-          ticker: c.ticker,
-        },
-        authorAccountType: "COMPANY",
-        authorType: "COMPANY",
-        companyId: c.name,
-        ticker: c.ticker,
-        content: `Official Statutory Notice: ${c.name} has submitted its updated Delaware statutory annual filing and secondary trading covenants. Verified accredited shareholders can review the updated 409A valuation schedule and unallocated option pool reserve details in the corporate data room.`,
-        mediaUrls: [],
-        postType: "UPDATE" as any,
-        visibility: "PUBLIC" as any,
-        communityName: "Delaware Statutory Corporate Issuers",
-        hashtags: ["DelawareCorp", "SECRegistry", "Governance", c.ticker],
-        mentions: [],
-        likesCount: 96,
-        commentsCount: 0,
-        sharesCount: 8,
-        bookmarksCount: 19,
-        isLiked: false,
-        isBookmarked: false,
-        createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-        updatedAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-      },
-      {
-        id: `official-post-${c.id}-3`,
-        wqAuthorId: `author-${c.id}-corporate`,
-        author: {
-          wqUserId: `author-${c.id}-corporate`,
-          displayName: c.name,
-          username: c.ticker ? c.ticker.toLowerCase() : c.name.toLowerCase().replace(/[^a-z0-9]/g, ""),
-          headline: `Corporate Account • Official Expansion Notice`,
-          avatarUrl: "",
-          verificationLevel: (c.verificationLevel as any) || "PLATINUM",
-          authorAccountType: "COMPANY",
-          authorType: "COMPANY",
-          companyId: c.name,
-          ticker: c.ticker,
-        },
-        authorAccountType: "COMPANY",
-        authorType: "COMPANY",
-        companyId: c.name,
-        ticker: c.ticker,
-        content: `Commercial expansion update: ${c.name} closed a multi-year enterprise compute & deployment contract with a Fortune 100 consortium. Our ARR run-rate has expanded past ${c.annualRevenue}, reflecting strong institutional demand for verified scalable execution.`,
-        mediaUrls: [],
-        postType: "UPDATE" as any,
-        visibility: "PUBLIC" as any,
-        communityName: `${c.sector} & Infrastructure Leaders`,
-        hashtags: ["ARR", "Growth", "VentureLiquidity", c.ticker],
-        mentions: [c.ticker],
-        likesCount: 242,
-        commentsCount: 0,
-        sharesCount: 21,
-        bookmarksCount: 45,
-        isLiked: false,
-        isBookmarked: false,
-        createdAt: new Date(Date.now() - 11 * 86400000).toISOString(),
-        updatedAt: new Date(Date.now() - 11 * 86400000).toISOString(),
-      },
-    ]
-  }, [activeCompanyProfile])
+    return []
+  }, [])
 
   // ── Company-Specific Followers List ──
   const companyFollowers = useMemo(() => {
@@ -1337,144 +1126,8 @@ export default function CommunityPage() {
       })
     }
 
-    // Curated high-conviction institutional & verified ecosystem followers
-    const ecosystemFollowers = [
-      {
-        id: `foll-${activeCompanyProfile.id}-1`,
-        name: "Elena Rostova",
-        username: "erostova",
-        headline: "General Partner @ Green Horizon Ventures",
-        role: "INVESTOR",
-        location: "San Francisco, CA",
-        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-        followersCount: 3820,
-        followingCount: 412,
-        postsCount: 28,
-        verificationLevel: "PLATINUM",
-        trustScore: 99,
-        badgeText: "Lead Series-A Syndicate",
-        bio: `General Partner at Green Horizon Ventures leading Series A & B co-investment allocations in verified corporate issuers like ${activeCompanyProfile.name}. Focus on statutory cap table structuring, clean technology commercialization, and sovereign secondary liquidity.`,
-        sectors: ["Venture Capital", "CleanTech", "Energy Transition", "Secondary Markets"],
-        verifiedAccreditations: [
-          "Venture Syndicate Participant",
-          "Series-A Co-Investor",
-          "White Quantex Sovereign Trust: Platinum Tier",
-          "ESG Reporting Oversight Member",
-        ],
-      },
-      {
-        id: `foll-${activeCompanyProfile.id}-2`,
-        name: "Marcus Vance",
-        username: "mvance_quant",
-        headline: "Managing Director @ Apex CleanTech Syndicate",
-        role: "INVESTOR",
-        location: "New York, NY",
-        avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
-        followersCount: 2450,
-        followingCount: 280,
-        postsCount: 19,
-        verificationLevel: "PLATINUM",
-        trustScore: 96,
-        badgeText: "Cap Table Shareholder",
-        bio: `Managing director structuring secondary share transfers, escrow settlement covenants, and corporate governance for institutional LPs. Shareholder and strategic backer of ${activeCompanyProfile.name}.`,
-        sectors: ["Secondary Liquidity", "Energy Transition", "Asset Management"],
-        verifiedAccreditations: [
-          "Syndicate Manager",
-          "Ecosystem Shareholder",
-          "Escrow Protocol Participant",
-        ],
-      },
-      {
-        id: `foll-${activeCompanyProfile.id}-3`,
-        name: "Dr. Aris Thorne",
-        username: "aris_thorne",
-        headline: `Lead Infrastructure Architect & ${activeCompanyProfile.sector} Specialist`,
-        role: "FOUNDER",
-        location: "Boston, MA",
-        avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
-        followersCount: 1890,
-        followingCount: 195,
-        postsCount: 24,
-        verificationLevel: "GOLD",
-        trustScore: 94,
-        badgeText: "Technical Advisor",
-        bio: `Senior systems architect and advisor specializing in high-reliability telemetry, autonomous grid interconnects, and machine-intelligence systems. Technical advisor to ${activeCompanyProfile.name}.`,
-        sectors: ["Industrial Architecture", "Clean Infrastructure", "Edge Compute", "Robotics"],
-        verifiedAccreditations: [
-          "Technical Advisory Board Member",
-          "White Quantex Gold Verified Architect",
-          "Technical Patent Contributor",
-        ],
-      },
-      {
-        id: `foll-${activeCompanyProfile.id}-4`,
-        name: "Sarah Jenkins",
-        username: "sjenkins_vc",
-        headline: "Principal @ West Coast Climate Allocators",
-        role: "INVESTOR",
-        location: "San Diego, CA",
-        avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
-        followersCount: 1620,
-        followingCount: 310,
-        postsCount: 15,
-        verificationLevel: "GOLD",
-        trustScore: 92,
-        badgeText: "Secondary Allocator",
-        bio: `Principal investor allocating growth capital across private climate and secondary infrastructure. Direct syndicate participant in ${activeCompanyProfile.name} secondary rounds.`,
-        sectors: ["Climate Tech", "Secondary Allocations", "Growth Equity"],
-        verifiedAccreditations: [
-          "Institutional Allocator",
-          "White Quantex Verified Secondary Allocator",
-        ],
-      },
-      {
-        id: `foll-${activeCompanyProfile.id}-5`,
-        name: "David Kim",
-        username: "davidkim_capital",
-        headline: "Quantitative Secondary Trading Lead",
-        role: "INVESTOR",
-        location: "Chicago, IL",
-        avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
-        followersCount: 940,
-        followingCount: 120,
-        postsCount: 12,
-        verificationLevel: "GOLD",
-        trustScore: 91,
-        badgeText: "Liquidity Provider",
-        bio: `Leading private secondary market-making and quantitative order routing for enterprise equities. Continuous liquidity provider for ${activeCompanyProfile.name}.`,
-        sectors: ["Market Making", "Algorithmic Clearing", "Secondary Trading"],
-        verifiedAccreditations: [
-          "Secondary Liquidity Provider",
-          "Clearing Node Participant",
-        ],
-      },
-      {
-        id: `foll-${activeCompanyProfile.id}-6`,
-        name: "Amara Diallo",
-        username: "amara_global",
-        headline: "Infrastructure Angel & Cap Table Member",
-        role: "INVESTOR",
-        location: "London, UK",
-        avatar: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80",
-        followersCount: 4210,
-        followingCount: 520,
-        postsCount: 31,
-        verificationLevel: "PLATINUM",
-        trustScore: 98,
-        badgeText: "Cap Table Member",
-        bio: `Cross-border venture angel and early cap table participant. Active investor across European and US growth issuers including ${activeCompanyProfile.name}.`,
-        sectors: ["Cross-Border Angel", "Enterprise Software", "Clean Energy", "Venture Syndicates"],
-        verifiedAccreditations: [
-          "Verified Shareholder",
-          "White Quantex Platinum Trust Certified",
-        ],
-      },
-    ]
-
-    list.push(...ecosystemFollowers)
-
     if (members && members.length > 0) {
-      const additional = members.slice(0, 4).map((m) => ({
+      const additional = members.map((m) => ({
         ...m,
         badgeText: "Ecosystem Member",
       }))
@@ -1482,97 +1135,12 @@ export default function CommunityPage() {
     }
 
     return list
-  }, [activeCompanyProfile, isCompanyFollowed, currentUser, members])
+  }, [activeCompanyProfile, isCompanyFollowed, currentUser, members, authUser, followedUsersMap])
 
-  // ── Entities / Partners Followed by this Company (18 Following) ──
+  // ── Entities / Partners Followed by this Company ──
   const companyFollowing = useMemo(() => {
-    if (!activeCompanyProfile) return []
-
-    const sectorName = activeCompanyProfile.sector || "CleanTech"
-
-    return [
-      {
-        id: "flw-1",
-        name: "Delaware Division of Corporations & Registry",
-        category: "Regulatory & Statutory Registry",
-        location: "Dover, DE",
-        description: "Official Delaware corporate filing registry, statutory legal records, and 409A charter filings.",
-        avatarInitials: "DOC",
-        avatarColor: "bg-blue-600",
-        verificationLevel: "PLATINUM",
-      },
-      {
-        id: "flw-2",
-        name: "Green Horizon Ventures",
-        category: "Lead Venture Syndicate Partner",
-        location: "San Francisco, CA",
-        description: `Early-stage institutional lead capital partner specializing in verified ${sectorName} commercialization.`,
-        avatarInitials: "GHV",
-        avatarColor: "bg-emerald-600",
-        verificationLevel: "PLATINUM",
-      },
-      {
-        id: "flw-3",
-        name: "White Quantex Secondary Clearing Rail",
-        category: "Clearing & Settlement Protocol",
-        location: "New York, NY",
-        description: "ISO-20022 escrow settlement rail facilitating accredited private secondary share transfers.",
-        avatarInitials: "WQC",
-        avatarColor: "bg-slate-900",
-        verificationLevel: "PLATINUM",
-      },
-      {
-        id: "flw-4",
-        name: `${sectorName} & Infrastructure Leaders Hub`,
-        category: "Primary Sector Ecosystem Consortium",
-        location: "Global",
-        description: `Verified institutional working forum for founders, researchers, and syndicate managers in ${sectorName}.`,
-        avatarInitials: "SIL",
-        avatarColor: "bg-cyan-600",
-        verificationLevel: "PLATINUM",
-      },
-      {
-        id: "flw-5",
-        name: "Delaware Statutory Corporate Issuers Hub",
-        category: "Issuer Governance Hub",
-        location: "Wilmington, DE",
-        description: "Private secondary liquidity, corporate governance covenants, and verified cap table administration.",
-        avatarInitials: "DSC",
-        avatarColor: "bg-indigo-600",
-        verificationLevel: "GOLD",
-      },
-      {
-        id: "flw-6",
-        name: "Apex CleanTech Syndicate Consortium",
-        category: "Institutional Capital Group",
-        location: "Boston, MA",
-        description: "Accredited syndicate allocating growth compute and operational infrastructure across portfolio leaders.",
-        avatarInitials: "ACS",
-        avatarColor: "bg-amber-600",
-        verificationLevel: "PLATINUM",
-      },
-      {
-        id: "flw-7",
-        name: "Global Standards for Clean Industrial Transition",
-        category: "Regulatory Standards Organization",
-        location: "Zurich, Switzerland",
-        description: "Carbon verification, thermodynamic efficiency benchmarking, and corporate reporting covenants.",
-        avatarInitials: "GSI",
-        avatarColor: "bg-purple-600",
-        verificationLevel: "GOLD",
-      },
-      {
-        id: "flw-8",
-        name: "Silicon Valley Compute & Infrastructure Rail",
-        category: "Technology Deployment Partner",
-        location: "Palo Alto, CA",
-        description: "High-throughput industrial compute cluster providing verified low-latency data room integrations.",
-        avatarInitials: "SVC",
-        avatarColor: "bg-rose-600",
-        verificationLevel: "GOLD",
-      },
-    ]
-  }, [activeCompanyProfile])
+    return []
+  }, [])
 
   const filteredPosts = useMemo(() => {
     let pool: Post[] = allPostsPool
@@ -2136,7 +1704,19 @@ export default function CommunityPage() {
                             </div>
                           </div>
                           <div>
-                            <h4 className="text-xs font-bold text-slate-900 dark:text-white">{comm.name}</h4>
+                            <div className="flex items-center justify-between gap-1">
+                              <h4
+                                onClick={() => navigate(`/community/${comm.slug || comm.id}`)}
+                                className="text-xs font-bold text-slate-900 dark:text-white hover:text-emerald-500 cursor-pointer transition-colors"
+                              >
+                                {comm.name}
+                              </h4>
+                              {comm.isPrivate && (
+                                <Badge variant="outline" className="text-[9px] bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30 font-bold py-0 gap-0.5">
+                                  <Lock className="h-2 w-2" /> Private
+                                </Badge>
+                              )}
+                            </div>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">{comm.description}</p>
                             
                             {/* Hub Owner & Creation Metadata */}
@@ -2155,7 +1735,7 @@ export default function CommunityPage() {
                           </div>
                         </div>
 
-                        <div className="pt-2 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between">
+                        <div className="pt-2 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
                               {comm.categories?.[0] || "Community Hub"}
@@ -2171,29 +1751,40 @@ export default function CommunityPage() {
                                 className="text-[10px] font-bold text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 flex items-center gap-1 cursor-pointer p-0.5"
                                 title="Delete Hub (Owner Only)"
                               >
-                                <Trash2 className="h-3 w-3" /> Delete Hub
+                                <Trash2 className="h-3 w-3" /> Delete
                               </button>
                             )}
                           </div>
-                          <Button
-                            size="sm"
-                            variant={isJoined || isOwner ? "outline" : "default"}
-                            onClick={() => {
-                              if (!isOwner) {
-                                toggleJoinCommunity(comm.id)
-                              }
-                            }}
-                            className={cn(
-                              "h-7 px-3 text-[11px] font-bold rounded-[8px] cursor-pointer",
-                              isOwner
-                                ? "border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/5 cursor-default"
-                                : isJoined
-                                ? "border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-slate-300"
-                                : "bg-emerald-600 hover:bg-emerald-700 text-white"
-                            )}
-                          >
-                            {isOwner ? "Owner" : isJoined ? "Joined" : "+ Join Hub"}
-                          </Button>
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => navigate(`/community/${comm.slug || comm.id}`)}
+                              className="h-7 px-2.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 rounded-[8px] cursor-pointer flex items-center gap-1"
+                              title="Open WhatsApp-style group chat"
+                            >
+                              <MessageSquare className="h-3 w-3" /> Group Chat
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={isJoined || isOwner ? "outline" : "default"}
+                              onClick={() => {
+                                if (!isOwner) {
+                                  toggleJoinCommunity(comm.id)
+                                }
+                              }}
+                              className={cn(
+                                "h-7 px-3 text-[11px] font-bold rounded-[8px] cursor-pointer",
+                                isOwner
+                                  ? "border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/5 cursor-default"
+                                  : isJoined
+                                  ? "border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-slate-300"
+                                  : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                              )}
+                            >
+                              {isOwner ? "Owner" : isJoined ? "Joined" : "+ Join Hub"}
+                            </Button>
+                          </div>
                         </div>
                       </Card>
                     )
@@ -3925,7 +3516,7 @@ export default function CommunityPage() {
                   >
                     <Globe className="h-4 w-4 mb-1" />
                     <span>Public</span>
-                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Visible to all</span>
+                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Everyone can view</span>
                   </button>
                   <button
                     type="button"
@@ -3939,7 +3530,7 @@ export default function CommunityPage() {
                   >
                     <ShieldCheck className="h-4 w-4 mb-1" />
                     <span>Protected</span>
-                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Auth / Hub members</span>
+                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Community & Followers</span>
                   </button>
                   <button
                     type="button"
@@ -3953,7 +3544,7 @@ export default function CommunityPage() {
                   >
                     <Lock className="h-4 w-4 mb-1" />
                     <span>Private</span>
-                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Only author</span>
+                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Author & Private Access</span>
                   </button>
                 </div>
               </div>
@@ -4105,7 +3696,7 @@ export default function CommunityPage() {
                   >
                     <Globe className="h-4 w-4 mb-1" />
                     <span>Public</span>
-                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Visible to all</span>
+                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Everyone can view</span>
                   </button>
                   <button
                     type="button"
@@ -4119,7 +3710,7 @@ export default function CommunityPage() {
                   >
                     <ShieldCheck className="h-4 w-4 mb-1" />
                     <span>Protected</span>
-                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Auth / Hub members</span>
+                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Community & Followers</span>
                   </button>
                   <button
                     type="button"
@@ -4133,7 +3724,7 @@ export default function CommunityPage() {
                   >
                     <Lock className="h-4 w-4 mb-1" />
                     <span>Private</span>
-                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Only author</span>
+                    <span className="text-[9px] font-normal text-slate-400 mt-0.5">Author & Private Access</span>
                   </button>
                 </div>
               </div>

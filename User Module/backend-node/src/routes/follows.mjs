@@ -89,7 +89,10 @@ router.get("/:userId/status", async (req, res) => {
 router.post("/:userId", async (req, res) => {
   try {
     const targetUserId = req.params.userId
-    const rawFollower = req.user?.id || req.headers["x-wq-user-id"] || "wq-uuid-demo-author"
+    const rawFollower = req.user?.id || req.headers["x-wq-user-id"]
+    if (!rawFollower) {
+      return res.status(401).json({ success: false, message: "Authentication required to follow members." })
+    }
 
     const targetMember = await Member.findOne({
       $or: [{ wqUserId: targetUserId }, { username: targetUserId }],
@@ -176,40 +179,7 @@ router.post("/:userId", async (req, res) => {
   }
 })
 
-// Curated network participants to populate rich follower lists without founder/CEO/investor roles
-const ECOSYSTEM_NETWORK_PROFILES = [
-  { id: "wq-user-elena-voss", name: "Elena Voss", username: "elenavoss", headline: "AI Systems Architect · Distributed Inference", verificationLevel: "GOLD", followersCount: 14200 },
-  { id: "wq-user-aris-thorne", name: "Dr. Aris Thorne", username: "aristhorne", headline: "Surgical Robotics & Haptic Vision Systems", verificationLevel: "PLATINUM", followersCount: 11400 },
-  { id: "wq-user-marcus-klein", name: "Marcus Klein", username: "marcusklein", headline: "Decentralized Energy Grid Optimization", verificationLevel: "SILVER", followersCount: 8900 },
-  { id: "wq-user-vikram-seth", name: "Vikram Seth", username: "vikramseth", headline: "Spatial Telemetry & NeuroTech Engineering", verificationLevel: "GOLD", followersCount: 7600 },
-  { id: "wq-user-sarah-chen", name: "Sarah Chen", username: "sarahchen", headline: "Frontier Infrastructure & Capital Allocation", verificationLevel: "PLATINUM", followersCount: 24500 },
-  { id: "wq-user-david-kim", name: "David Kim", username: "davidkim", headline: "DeepTech Systems & Aerospace Logistics", verificationLevel: "GOLD", followersCount: 18900 },
-  { id: "wq-uuid-demo-author", name: "Alexander Vance", username: "alexvance", headline: "Secondary Share Clearing & Liquidity Rails", verificationLevel: "PLATINUM", followersCount: 31200 },
-  { id: "wq-user-claire-dupont", name: "Claire Dupont", username: "clairedupont", headline: "Cross-Border Enterprise Architecture", verificationLevel: "GOLD", followersCount: 12400 },
-  { id: "wq-net-liam-g", name: "Liam Gallagher", username: "liamg", headline: "Distributed Consensus Protocols", verificationLevel: "GOLD", followersCount: 3400 },
-  { id: "wq-net-sophia-m", name: "Sophia Martinez", username: "sophiam", headline: "Quantitative Risk Modeling & Hedging", verificationLevel: "PLATINUM", followersCount: 5200 },
-  { id: "wq-net-ethan-b", name: "Ethan Brooks", username: "ethanb", headline: "Post-Quantum Lattice Cryptography", verificationLevel: "GOLD", followersCount: 4100 },
-  { id: "wq-net-maya-p", name: "Maya Patel", username: "mayapatel", headline: "Autonomous Supply Chain Logistics", verificationLevel: "SILVER", followersCount: 2900 },
-  { id: "wq-net-julian-v", name: "Julian Vance", username: "julianv", headline: "Real-Time Treasury Clearing Rails", verificationLevel: "PLATINUM", followersCount: 6800 },
-  { id: "wq-net-chloe-z", name: "Chloe Zhang", username: "chloezhang", headline: "Neural Hardware Accelerators & Silicon", verificationLevel: "GOLD", followersCount: 4700 },
-  { id: "wq-net-lucas-s", name: "Lucas Schmidt", username: "lucasschmidt", headline: "Synthetic Fuel & Carbon Removal Tech", verificationLevel: "SILVER", followersCount: 1800 },
-  { id: "wq-net-aisha-m", name: "Aisha Al-Mansoor", username: "aishamansoor", headline: "Microgrid Power Systems Architect", verificationLevel: "GOLD", followersCount: 3900 },
-  { id: "wq-net-oliver-w", name: "Oliver Wright", username: "oliverwright", headline: "Autonomous Avionics & Orbital Logistics", verificationLevel: "PLATINUM", followersCount: 7100 },
-  { id: "wq-net-isabella-r", name: "Isabella Rossi", username: "isabellarossi", headline: "Enzymatic DNA Synthesis Researcher", verificationLevel: "GOLD", followersCount: 2600 },
-  { id: "wq-net-noah-t", name: "Noah Takahashi", username: "noahtakahashi", headline: "Laparoscopic Computer Vision Lead", verificationLevel: "SILVER", followersCount: 3100 },
-  { id: "wq-net-mia-l", name: "Mia Lindstrom", username: "mialindstrom", headline: "Institutional Clearing & Escrow Protocol", verificationLevel: "GOLD", followersCount: 4300 },
-  { id: "wq-net-daniel-c", name: "Daniel Cohen", username: "danielcohen", headline: "ISO-20022 Financial Messaging Systems", verificationLevel: "PLATINUM", followersCount: 8200 },
-  { id: "wq-net-harper-s", name: "Harper Scott", username: "harperscott", headline: "Delaware Corporate Registry Protocol", verificationLevel: "GOLD", followersCount: 5100 },
-  { id: "wq-net-benjamin-h", name: "Benjamin Hayes", username: "benjaminhayes", headline: "Autonomous Agentic Systems Developer", verificationLevel: "SILVER", followersCount: 2200 },
-  { id: "wq-net-ava-r", name: "Ava Robinson", username: "avarobinson", headline: "High-Throughput Inference Pipeline", verificationLevel: "GOLD", followersCount: 4600 },
-  { id: "wq-net-leo-f", name: "Leo Fontaine", username: "leofontaine", headline: "Next-Gen Thermal Battery Engineering", verificationLevel: "SILVER", followersCount: 1950 },
-  { id: "wq-net-grace-t", name: "Grace Tanaka", username: "gracetanaka", headline: "CRISPR-Guided Diagnostics Research", verificationLevel: "GOLD", followersCount: 3300 },
-  { id: "wq-net-ryan-o", name: "Ryan O'Connor", username: "ryanoconnor", headline: "Sub-Orbital Launch Dynamics Specialist", verificationLevel: "PLATINUM", followersCount: 6400 },
-  { id: "wq-net-zoe-j", name: "Zoe Jenkins", username: "zoejenkins", headline: "Zero-Knowledge Security Auditor", verificationLevel: "GOLD", followersCount: 4900 },
-  { id: "wq-net-nathan-c", name: "Nathan Chen", username: "nathanchen", headline: "High-Frequency Quantitative Strategist", verificationLevel: "PLATINUM", followersCount: 7800 },
-  { id: "wq-net-victoria-b", name: "Victoria Bell", username: "victoriabell", headline: "Autonomous Fleet Telemetry Lead", verificationLevel: "GOLD", followersCount: 3600 },
-]
-
+// Helper to sanitize headlines
 function sanitizeHeadline(str = "") {
   if (!str) return "Ecosystem Participant"
   return str
@@ -258,6 +228,7 @@ router.get("/:userId/followers", async (req, res) => {
 
     const realList = followerIds.map((id) => {
       const m = memberMap[id]
+      const followDoc = followDocs.find((f) => f.followerWqUserId === id)
       return {
         id: m?.wqUserId || id,
         name: m?.name || "Ecosystem Member",
@@ -267,6 +238,7 @@ router.get("/:userId/followers", async (req, res) => {
         verificationLevel: m?.verificationLevel || "NONE",
         followersCount: m?.followersCount || 0,
         isFollowing: viewerFollowingSet.has(m?.wqUserId || id),
+        hasPrivateAccess: Boolean(followDoc?.hasPrivateAccess),
       }
     })
 
@@ -349,7 +321,10 @@ router.get("/:userId/following", async (req, res) => {
 router.delete("/:userId", async (req, res) => {
   try {
     const targetUserId = req.params.userId
-    const rawFollower = req.user?.id || req.headers["x-wq-user-id"] || "wq-uuid-demo-author"
+    const rawFollower = req.user?.id || req.headers["x-wq-user-id"]
+    if (!rawFollower) {
+      return res.status(401).json({ success: false, message: "Authentication required to unfollow members." })
+    }
 
     const targetMember = await Member.findOne({
       $or: [{ wqUserId: targetUserId }, { username: targetUserId }],
@@ -393,6 +368,54 @@ router.delete("/:userId", async (req, res) => {
       success: true,
       message: "Unfollowed successfully",
       data: { isFollowing: false, followersCount, targetUserId: targetKey },
+      timestamp: new Date().toISOString(),
+    })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
+// POST /api/follows/:userId/private-access - Toggle private access for a follower (Author Only)
+router.post("/:userId/private-access", async (req, res) => {
+  try {
+    const targetFollowerId = req.params.userId
+    const currentUserId = req.user?.id || req.headers["x-wq-user-id"]
+
+    if (!currentUserId) {
+      return res.status(401).json({ success: false, message: "Authentication required" })
+    }
+
+    const currentKey = (await resolveUserKey(currentUserId)) || currentUserId
+    const followerKey = (await resolveUserKey(targetFollowerId)) || targetFollowerId
+
+    const followDoc = await Follow.findOne({
+      $or: [
+        { followerWqUserId: followerKey, followingWqUserId: currentKey },
+        { followerWqUserId: targetFollowerId, followingWqUserId: currentKey },
+        { followerWqUserId: followerKey, followingWqUserId: currentUserId },
+        { followerWqUserId: targetFollowerId, followingWqUserId: currentUserId },
+      ],
+    })
+
+    if (!followDoc) {
+      return res.status(404).json({
+        success: false,
+        message: "This user is not currently following you.",
+      })
+    }
+
+    followDoc.hasPrivateAccess = !Boolean(followDoc.hasPrivateAccess)
+    await followDoc.save()
+
+    res.json({
+      success: true,
+      message: followDoc.hasPrivateAccess
+        ? "Private access granted to follower"
+        : "Private access revoked from follower",
+      data: {
+        followerId: targetFollowerId,
+        hasPrivateAccess: followDoc.hasPrivateAccess,
+      },
       timestamp: new Date().toISOString(),
     })
   } catch (err) {

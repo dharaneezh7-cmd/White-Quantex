@@ -10,9 +10,7 @@ const PORT = process.env.PORT || 3001
 
 async function startServer() {
   await connectDB()
-  await seedCommunityData()
   await syncCommentCounts()
-  await syncFollowCounts()
   
   const server = http.createServer(app)
   initSocketIO(server)

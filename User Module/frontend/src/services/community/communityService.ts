@@ -34,6 +34,19 @@ export interface CommunityNotification {
   read: boolean
 }
 
+export interface CommunityChatMessage {
+  id: string
+  communityId: string
+  senderWqUserId: string
+  senderName: string
+  senderUsername?: string
+  senderAvatarUrl?: string
+  content: string
+  mediaUrl?: string
+  reactions?: Array<{ emoji: string; wqUserId: string; username?: string }>
+  createdAt: string
+}
+
 export const communityService = {
   async getFeed(
     page = 0,
@@ -303,6 +316,33 @@ export const communityService = {
     const res = await nodeApi.delete<ApiResponse<{ isFollowing: boolean; followersCount: number }>>(
       `/follows/${userId}`
     )
+    return res.data.data
+  },
+
+  async togglePrivateAccess(followerId: string): Promise<{ followerId: string; hasPrivateAccess: boolean }> {
+    const res = await nodeApi.post<ApiResponse<{ followerId: string; hasPrivateAccess: boolean }>>(
+      `/follows/${followerId}/private-access`
+    )
+    return res.data.data
+  },
+
+  async getCommunityMessages(communityId: string): Promise<CommunityChatMessage[]> {
+    const res = await nodeApi.get<ApiResponse<CommunityChatMessage[]>>(`/communities/${communityId}/messages`)
+    return res.data?.data || []
+  },
+
+  async sendCommunityMessage(communityId: string, content: string, mediaUrl?: string): Promise<CommunityChatMessage> {
+    const res = await nodeApi.post<ApiResponse<CommunityChatMessage>>(`/communities/${communityId}/messages`, {
+      content,
+      mediaUrl,
+    })
+    return res.data.data
+  },
+
+  async reactCommunityMessage(communityId: string, messageId: string, emoji: string): Promise<any> {
+    const res = await nodeApi.post<ApiResponse<any>>(`/communities/${communityId}/messages/${messageId}/reaction`, {
+      emoji,
+    })
     return res.data.data
   },
 }

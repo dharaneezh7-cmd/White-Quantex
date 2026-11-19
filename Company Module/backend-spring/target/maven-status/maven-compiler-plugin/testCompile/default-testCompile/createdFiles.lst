@@ -1,0 +1,4 @@
+com\whitequantex\company\service\CompanyMembershipServiceTest.class
+com\whitequantex\company\service\CompanyLifecycleServiceTest.class
+com\whitequantex\company\service\CompanyServiceTest.class
+com\whitequantex\company\service\CompanyVerificationServiceTest.class

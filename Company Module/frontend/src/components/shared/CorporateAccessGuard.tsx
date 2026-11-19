@@ -41,6 +41,11 @@ export function CorporateAccessGuard({
 
     if (hasRole) return true
 
+    // Whitelist demo account explicitly
+    if (user.email === "demo@whitequantex.com") {
+      return true
+    }
+
     // Check accountType
     const accType = String(user.accountType || "").toUpperCase()
     if (
